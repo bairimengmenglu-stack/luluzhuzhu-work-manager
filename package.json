@@ -1,0 +1,13 @@
+{
+  "name": "luluzhuzhu-work-manager",
+  "version": "0.1.0",
+  "description": "luluzhuzhu's work management app",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^44.4.1"
+  }
+}

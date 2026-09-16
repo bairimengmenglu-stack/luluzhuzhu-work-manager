@@ -1,0 +1,259 @@
+:root {
+  --bg: #1e1f24;
+  --bg-sidebar: #18191d;
+  --bg-panel: #25272e;
+  --bg-control: #2e3138;
+  --bg-control-hover: #3a3e47;
+  --border: #33363f;
+  --text: #e6e7ea;
+  --text-muted: #9aa0a8;
+  --accent: #4f8cff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+#app {
+  display: flex;
+}
+
+/* ---------- 侧边栏 ---------- */
+
+#sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 180px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+#logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+}
+
+#nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--bg-control);
+  color: var(--text);
+}
+
+.nav-item.active {
+  background: var(--bg-control-hover);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nav-item .nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.nav-item .nav-hotkey {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+#sidebar-footer {
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  white-space: pre-line;
+}
+
+/* ---------- 面板区域 ---------- */
+
+#panels {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.panel {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  background: var(--bg-panel);
+}
+
+.panel.active {
+  display: flex;
+  animation: panel-fade 0.15s ease-out;
+}
+
+@keyframes panel-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- 工作台 ---------- */
+
+.workbench {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+}
+
+.workbench h1 {
+  font-size: 26px;
+}
+
+.workbench .clock {
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench .date {
+  color: var(--text-muted);
+}
+
+.workbench .hint {
+  margin-top: 18px;
+  padding: 14px 22px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  line-height: 1.9;
+  text-align: center;
+}
+
+/* ---------- 浏览器面板 ---------- */
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.browser-toolbar button {
+  width: 32px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.browser-toolbar button:hover {
+  background: var(--bg-control);
+  color: var(--text);
+}
+
+.browser-toolbar .btn-go {
+  width: auto;
+  padding: 0 12px;
+}
+
+#url-input {
+  flex: 1;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--bg-control);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+#url-input:focus {
+  border-color: var(--accent);
+}
+
+.browser-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.browser-loading {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  display: none;
+  pointer-events: none;
+}
+
+.panel.loading .browser-loading {
+  display: block;
+}
