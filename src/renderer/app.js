@@ -675,4 +675,10 @@ document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   initPaneResize();
   setPaneOpen(false);
+
+  // guest 页面的新窗口请求 → 在浏览器面板内开新标签（ZCode 行为）
+  window.workManager.onNewTab?.(({ url }) => {
+    setPaneOpen(true);
+    createTab(url);
+  });
 });
