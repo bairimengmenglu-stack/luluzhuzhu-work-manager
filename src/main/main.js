@@ -1,5 +1,7 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron');
 const path = require('path');
+
+Menu.setApplicationMenu(null);
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -8,7 +10,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 600,
     title: 'luluzhuzhu 工作管理',
-    backgroundColor: '#1e1f24',
+    backgroundColor: '#fafafa',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -33,6 +35,12 @@ app.on('web-contents-created', (_event, contents) => {
       if (/^https?:\/\//i.test(url)) shell.openExternal(url);
       return { action: 'deny' };
     });
+  }
+});
+
+ipcMain.handle('browser:open-external', (_event, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    shell.openExternal(url);
   }
 });
 

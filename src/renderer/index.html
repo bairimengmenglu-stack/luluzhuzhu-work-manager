@@ -3,18 +3,170 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src *" />
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; frame-src *" />
   <title>luluzhuzhu 工作管理</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
+    <!-- 左侧栏 -->
     <aside id="sidebar">
-      <div id="logo" title="luluzhuzhu 工作管理">lz</div>
-      <nav id="nav" aria-label="面板切换"></nav>
-      <div id="sidebar-footer"></div>
+      <div class="sb-top">
+        <div id="logo" title="luluzhuzhu 工作管理">lz</div>
+      </div>
+      <nav id="sb-menu">
+        <button class="sb-item active" id="sb-workbench">
+          <svg class="sb-ic" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span class="sb-label">工作台</span>
+          <span class="sb-hotkey">Ctrl+1</span>
+        </button>
+        <button class="sb-item" id="sb-browser">
+          <svg class="sb-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+          <span class="sb-label">浏览器</span>
+          <span class="sb-hotkey">Ctrl+2</span>
+        </button>
+      </nav>
+      <div class="sb-section">
+        <div class="sb-section-title">项目</div>
+        <button class="sb-task active">
+          <svg class="sb-ic" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="sb-label">默认工作区</span>
+        </button>
+      </div>
+      <div class="sb-section">
+        <div class="sb-section-title">任务</div>
+        <div class="sb-empty-hint">暂无任务</div>
+      </div>
+      <div class="sb-bottom">
+        <div class="sb-avatar">l</div>
+        <span class="sb-name">luluzhuzhu</span>
+        <span class="sb-badge">本地</span>
+        <svg class="sb-ic sb-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
     </aside>
-    <main id="panels"></main>
+
+    <!-- 右侧区域 -->
+    <div id="main-col">
+      <!-- 标题栏 -->
+      <header id="titlebar">
+        <div class="tb-left">
+          <span class="tb-title">工作台</span>
+          <span class="tb-chip">
+            <svg class="tb-chip-ic" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+            默认工作区
+          </span>
+        </div>
+        <div class="tb-right">
+          <button id="btn-toggle-browser" class="tb-icon" aria-pressed="false" title="切换浏览器">
+            <svg class="ic" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- 内容区：工作台 + 浏览器侧面板 -->
+      <div id="content-row">
+        <section id="workbench" class="main-panel">
+          <div class="wb-center">
+            <h1 class="wb-hello">工作台</h1>
+            <div class="wb-clock" id="clock">--:--:--</div>
+            <div class="wb-date" id="date"></div>
+            <div class="wb-hint">
+              点击右上角或侧边栏「浏览器」打开内嵌浏览器面板<br />
+              支持多标签页、标签总览、自由尺寸与网页元素选择
+            </div>
+          </div>
+        </section>
+
+        <!-- 浏览器侧面板 -->
+        <section id="browser-pane" class="side-pane" hidden>
+          <div id="pane-resize-handle" title="拖动调整宽度，双击最大化/恢复"></div>
+          <div class="pane-inner">
+            <div class="pane-head">
+              <button id="btn-overview" class="icon-btn" title="搜索标签页">
+                <svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div id="tab-strip-wrap">
+                <div id="tab-strip"></div>
+              </div>
+              <div class="add-wrap">
+                <button id="btn-add-tab" class="icon-btn outline" title="新增标签">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                </button>
+                <div id="add-menu" class="menu hidden" style="width:12rem">
+                  <button class="menu-item" id="add-browser-tab">
+                    <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                    <span>浏览器</span>
+                  </button>
+                  <button class="menu-item disabled">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                    <span>终端</span>
+                  </button>
+                  <button class="menu-item disabled">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    <span>审查</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div id="browser-toolbar">
+              <button id="b-back" class="icon-btn" title="后退" disabled>
+                <svg class="ic" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+              </button>
+              <button id="b-forward" class="icon-btn" title="前进" disabled>
+                <svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </button>
+              <button id="b-reload" class="icon-btn" title="刷新" disabled>
+                <svg class="ic" id="ic-reload" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
+              <input id="b-address" type="text" spellcheck="false" placeholder="输入网址后回车" />
+              <button id="b-responsive" class="icon-btn" title="自由尺寸">
+                <svg class="ic" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              </button>
+              <button id="b-picker" class="icon-btn" title="选择网页元素" disabled>
+                <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
+              </button>
+              <button id="b-more" class="icon-btn" title="更多浏览器操作">
+                <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+              <div id="more-menu" class="menu hidden" style="width:13rem">
+                <button class="menu-item" id="more-open-external">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                  <span>在默认浏览器中打开</span>
+                </button>
+                <button class="menu-item" id="more-devtools">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                  <span>打开调试工具</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="responsive-bar" class="hidden">
+              <span>视口</span>
+              <input id="resp-width" type="text" value="375" /> ×
+              <input id="resp-height" type="text" value="667" />
+              <button id="resp-fit" class="mini-btn">适应窗口</button>
+              <button id="resp-exit" class="mini-btn">退出</button>
+            </div>
+
+            <div id="views">
+              <div id="browser-empty" class="pane-overlay hidden">
+                <svg class="empty-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                <h3>浏览器</h3>
+                <p>粘贴或输入 URL 以打开网页。</p>
+              </div>
+
+              <div id="browser-loading" class="pane-overlay hidden">
+                <div class="spinner"></div>
+              </div>
+            </div>
+
+            <div id="tab-overview" class="menu hidden"></div>
+            <div id="toast-wrap"></div>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

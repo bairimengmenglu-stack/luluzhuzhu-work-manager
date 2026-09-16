@@ -1,141 +1,678 @@
-/* 面板注册表：新增面板只需在这里加一项并提供 render 函数 */
-const PANELS = [
-  { id: 'workbench', name: '工作台', icon: '🏠', hotkey: 'Ctrl+1', render: renderWorkbench },
-  { id: 'browser', name: '浏览器', icon: '🌐', hotkey: 'Ctrl+2', render: renderBrowser }
-];
+/* ZCode 风格的工作管理应用：左侧栏 + 工作台 + 浏览器侧面板（多标签） */
 
-const HOME_URL = 'https://www.bing.com';
+const $ = (sel) => document.querySelector(sel);
 
-document.addEventListener('DOMContentLoaded', init);
+const state = {
+  tabs: [],           // { id, url, title, favicon, openedAt, isLoading, canGoBack, canGoForward, error }
+  closed: [],         // { title, url, closedAt }
+  activeTabId: null,
+  paneOpen: false,
+  responsive: false,
+  picking: false,
+  nextTabId: 1
+};
 
-function init() {
-  const nav = document.getElementById('nav');
-  const panelsEl = document.getElementById('panels');
+/* ---------- 工具 ---------- */
 
-  for (const panel of PANELS) {
-    const section = document.createElement('section');
-    section.className = 'panel';
-    section.id = `panel-${panel.id}`;
-    panelsEl.appendChild(section);
-    panel.render(section);
+function toast(msg, ms = 3500) {
+  const item = document.createElement('div');
+  item.className = 'toast';
+  item.textContent = msg;
+  $('#toast-wrap').appendChild(item);
+  setTimeout(() => item.remove(), ms);
+}
 
-    const button = document.createElement('button');
-    button.className = 'nav-item';
-    button.id = `nav-${panel.id}`;
-    button.innerHTML =
-      `<span class="nav-icon">${panel.icon}</span>` +
-      `<span>${panel.name}</span>` +
-      (panel.hotkey ? `<span class="nav-hotkey">${panel.hotkey}</span>` : '');
-    button.addEventListener('click', () => activatePanel(panel.id));
-    nav.appendChild(button);
+function relTime(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小时前`;
+  return `${Math.floor(hr / 24)} 天前`;
+}
+
+const URL_SCHEMES = /^(https?|file|about|data):/i;
+const BARE_HOST = /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/i;
+
+function resolveUrl(raw) {
+  const input = (raw || '').trim();
+  if (!input) return null;
+  if (URL_SCHEMES.test(input)) return input;
+  if (BARE_HOST.test(input)) return `https://${input}`;
+  return null;
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+const GLOBE_MINI =
+  '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
+
+/* ---------- 标签管理 ---------- */
+
+function activeTab() {
+  return state.tabs.find((t) => t.id === state.activeTabId) || null;
+}
+
+function createTab(url = '') {
+  const tab = {
+    id: state.nextTabId++,
+    url,
+    title: '',
+    favicon: '',
+    openedAt: Date.now(),
+    isLoading: false,
+    canGoBack: false,
+    canGoForward: false,
+    error: null
+  };
+  state.tabs.push(tab);
+  createView(tab);
+  activateTab(tab.id);
+  renderStrip();
+  return tab;
+}
+
+function closeTab(id) {
+  const idx = state.tabs.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  const tab = state.tabs[idx];
+  const view = $('#view-' + id);
+  if (view) try { view.close(); } catch { /* 已卸载 */ }
+  state.tabs.splice(idx, 1);
+  if (tab.url) state.closed.unshift({ title: tabTitle(tab), url: tab.url, closedAt: Date.now() });
+  if (state.closed.length > 20) state.closed.pop();
+
+  if (state.activeTabId === id) {
+    const next = state.tabs[idx] || state.tabs[idx - 1];
+    state.activeTabId = next ? next.id : null;
+  }
+  renderViews();
+  renderStrip();
+  syncToolbar();
+}
+
+function activateTab(id) {
+  state.activeTabId = id;
+  renderStrip();
+  renderViews();
+  syncToolbar();
+}
+
+function tabTitle(tab) {
+  return tab.title || (tab.url ? hostOf(tab.url) : '新标签页');
+}
+
+/* ---------- 视图 ---------- */
+
+function createView(tab) {
+  const wrap = document.createElement('div');
+  wrap.className = 'view-wrap';
+  wrap.id = 'wrap-' + tab.id;
+  const view = document.createElement('webview');
+  view.id = 'view-' + tab.id;
+  view.src = 'about:blank';
+  view.setAttribute('allowpopups', '');
+  wrap.appendChild(view);
+  $('#views').appendChild(wrap);
+  wireView(tab, view);
+}
+
+function renderViews() {
+  for (const tab of state.tabs) {
+    const wrap = $('#wrap-' + tab.id);
+    if (wrap) wrap.classList.toggle('active', tab.id === state.activeTabId);
+  }
+  const paneEl = $('#browser-pane');
+  const tab = activeTab();
+  const showEmpty = !tab || !tab.url;
+  $('#browser-empty').classList.toggle('hidden', !(showEmpty && !tab?.error));
+  $('#browser-loading').classList.toggle('hidden', !(tab && tab.isLoading && !tab.error));
+  paneEl.classList.toggle('loading', !!tab?.isLoading);
+}
+
+function wireView(tab, view) {
+  view.addEventListener('did-start-loading', () => {
+    tab.isLoading = true;
+    tab.error = null;
+    syncToolbar();
+    renderViews();
+  });
+
+  view.addEventListener('did-stop-loading', () => {
+    tab.isLoading = false;
+    syncToolbar();
+    renderViews();
+  });
+
+  view.addEventListener('did-navigate', (e) => {
+    if (e.url === 'about:blank') return;
+    tab.url = e.url;
+    tab.error = null;
+    syncAddress();
+    syncToolbar();
+    renderViews();
+    renderStrip();
+  });
+
+  view.addEventListener('did-navigate-in-page', (e) => {
+    if (e.url === 'about:blank') return;
+    tab.url = e.url;
+    syncAddress();
+    renderStrip();
+  });
+
+  view.addEventListener('page-title-updated', (e) => {
+    tab.title = e.title;
+    renderStrip();
+  });
+
+  view.addEventListener('page-favicon-updated', (e) => {
+    tab.favicon = (e.favicons && e.favicons[0]) || '';
+    renderStrip();
+  });
+
+  view.addEventListener('did-fail-load', (e) => {
+    if (!e.isMainFrame || e.errorCode === -3) return;
+    tab.error = e.errorDescription || '加载失败';
+    renderViews();
+    renderError(tab);
+  });
+
+  view.addEventListener('dom-ready', () => {
+    if (tab.url && state.activeTabId === tab.id) syncToolbar();
+  });
+}
+
+/* ---------- 标签条 ---------- */
+
+function renderStrip() {
+  const strip = $('#tab-strip');
+  strip.textContent = '';
+  for (const tab of state.tabs) {
+    const el = document.createElement('div');
+    el.className = 'browser-tab' + (tab.id === state.activeTabId ? ' active' : '');
+    el.dataset.tabId = tab.id;
+
+    const fav = document.createElement('span');
+    fav.className = 'tab-fav';
+    if (tab.favicon) {
+      const img = document.createElement('img');
+      img.src = tab.favicon;
+      img.onerror = () => { fav.innerHTML = GLOBE_MINI; };
+      fav.appendChild(img);
+    } else {
+      fav.innerHTML = GLOBE_MINI;
+    }
+
+    const title = document.createElement('span');
+    title.className = 'tab-title';
+    title.textContent = tabTitle(tab);
+
+    const close = document.createElement('span');
+    close.className = 'tab-close';
+    close.title = '关闭标签';
+    close.innerHTML = '<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    });
+
+    el.append(fav, title, close);
+    el.title = tabTitle(tab);
+    el.addEventListener('click', (e) => {
+      if (e.button === 1) return;
+      activateTab(tab.id);
+    });
+    el.addEventListener('auxclick', (e) => {
+      if (e.button === 1) closeTab(tab.id);
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openTabContextMenu(e, tab);
+    });
+    strip.appendChild(el);
+  }
+  const active = strip.querySelector('.browser-tab.active');
+  if (active) active.scrollIntoView({ inline: 'nearest' });
+}
+
+/* ---------- 工具栏同步 ---------- */
+
+function syncToolbar() {
+  const tab = activeTab();
+  const ready = !!tab && !!tab.url && !tab.error;
+  $('#b-back').disabled = !tab || !tab.canGoBack;
+  $('#b-forward').disabled = !tab || !tab.canGoForward;
+  $('#b-reload').disabled = !ready && !(tab && tab.url);
+  $('#b-picker').disabled = !ready;
+  $('#ic-reload').classList.toggle('spinning', !!tab?.isLoading);
+  $('#b-reload').title = tab?.isLoading ? '停止' : '刷新';
+  syncAddress();
+}
+
+function syncAddress() {
+  const input = $('#b-address');
+  if (document.activeElement === input) return;
+  const tab = activeTab();
+  input.value = tab ? tab.url : '';
+}
+
+function renderError(tab) {
+  const overlay = $('#browser-loading');
+  overlay.innerHTML =
+    `<div style="display:flex;flex-direction:column;align-items:center;max-width:320px">` +
+    `<h3 style="font-weight:500">无法打开该页面</h3>` +
+    `<p style="margin-top:8px;color:var(--foreground-subtle)">${tab.error}</p>` +
+    `<button class="mini-btn" id="err-retry" style="margin-top:16px">重新加载</button></div>`;
+  overlay.classList.remove('hidden');
+  $('#err-retry').addEventListener('click', () => reloadActive());
+}
+
+/* ---------- 导航 ---------- */
+
+function navigateActive(raw) {
+  const tab = activeTab();
+  if (!tab) return;
+  const url = resolveUrl(raw);
+  if (!url) {
+    toast('仅支持 http、https、file、about、data 地址');
+    return;
+  }
+  const view = $('#view-' + tab.id);
+  tab.error = null;
+  view.loadURL(url);
+}
+
+function reloadActive() {
+  const tab = activeTab();
+  if (!tab || !tab.url) return;
+  tab.error = null;
+  renderViews();
+  $('#view-' + tab.id).reload();
+}
+
+function goBack() {
+  const tab = activeTab();
+  if (tab?.canGoBack) $('#view-' + tab.id).goBack();
+}
+
+function goForward() {
+  const tab = activeTab();
+  if (tab?.canGoForward) $('#view-' + tab.id).goForward();
+}
+
+/* ---------- 菜单 ---------- */
+
+function closeMenus(except) {
+  for (const id of ['add-menu', 'more-menu', 'tab-overview']) {
+    if (id !== except) $('#' + id).classList.add('hidden');
+  }
+  for (const el of document.querySelectorAll('.ctx-menu')) el.remove();
+}
+
+function placeMenu(menu, x, y) {
+  menu.classList.remove('hidden');
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = Math.min(x, window.innerWidth - rect.width - 8) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - rect.height - 8) + 'px';
+}
+
+function openTabContextMenu(e, tab) {
+  closeMenus(null);
+  const menu = document.createElement('div');
+  menu.className = 'menu ctx-menu';
+  menu.style.width = '10rem';
+  const items = [
+    ['关闭标签', () => closeTab(tab.id)],
+    ['关闭其他标签', () => { for (const t of [...state.tabs]) if (t.id !== tab.id) closeTab(t.id); }],
+    ['关闭所有标签', () => { for (const t of [...state.tabs]) closeTab(t.id); }]
+  ];
+  for (const [label, fn] of items) {
+    const btn = document.createElement('button');
+    btn.className = 'menu-item';
+    btn.textContent = label;
+    btn.addEventListener('click', () => { menu.remove(); fn(); });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  placeMenu(menu, e.clientX, e.clientY);
+}
+
+function openOverview() {
+  const pop = $('#tab-overview');
+  if (!pop.classList.contains('hidden')) {
+    pop.classList.add('hidden');
+    return;
+  }
+  closeMenus('tab-overview');
+  pop.textContent = '';
+
+  const openTitle = document.createElement('div');
+  openTitle.className = 'ov-section-title';
+  openTitle.textContent = '打开的标签页';
+  pop.appendChild(openTitle);
+
+  if (!state.tabs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ov-empty';
+    empty.textContent = '没有找到标签页。';
+    pop.appendChild(empty);
+  }
+  for (const tab of state.tabs) {
+    const item = document.createElement('button');
+    item.className = 'ov-item';
+    item.innerHTML = `<span class="ov-title">${tabTitle(tab)}</span><span class="ov-time">${relTime(tab.openedAt)}打开</span>`;
+    item.addEventListener('click', () => { activateTab(tab.id); pop.classList.add('hidden'); });
+    pop.appendChild(item);
   }
 
-  document.addEventListener('keydown', (event) => {
-    if (!event.ctrlKey || event.shiftKey || event.altKey) return;
-    const index = Number(event.key) - 1;
-    if (index >= 0 && index < PANELS.length) {
-      event.preventDefault();
-      activatePanel(PANELS[index].id);
+  if (state.closed.length) {
+    const closedTitle = document.createElement('div');
+    closedTitle.className = 'ov-section-title';
+    closedTitle.textContent = '最近关闭的标签页';
+    pop.appendChild(closedTitle);
+    for (const c of state.closed.slice(0, 8)) {
+      const item = document.createElement('button');
+      item.className = 'ov-item';
+      item.innerHTML = `<span class="ov-title">${c.title}</span><span class="ov-time">${relTime(c.closedAt)}关闭</span>`;
+      item.addEventListener('click', () => {
+        createTab(c.url);
+        state.closed = state.closed.filter((x) => x !== c);
+        pop.classList.add('hidden');
+      });
+      pop.appendChild(item);
+    }
+  }
+
+  pop.classList.remove('hidden');
+}
+
+/* ---------- 元素选择器 ---------- */
+
+const PICKER_SCRIPT = `
+  new Promise((resolve) => {
+    if (window.__zcPickActive) { resolve(null); return; }
+    window.__zcPickActive = true;
+    const outline = document.createElement('div');
+    outline.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #0284c7;background:rgba(2,132,199,.08);border-radius:2px;display:none';
+    document.documentElement.appendChild(outline);
+    function cleanup() {
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('keydown', onKey, true);
+      outline.remove();
+      document.documentElement.style.cursor = '';
+      delete window.__zcPickActive;
+      delete window.__zcPickCancel;
+    }
+    function desc(el) {
+      return {
+        tag: el.tagName.toLowerCase(),
+        id: el.id || '',
+        classes: Array.from(el.classList || []).slice(0, 3).join('.'),
+        text: (el.textContent || '').trim().slice(0, 40)
+      };
+    }
+    function onMove(e) {
+      const r = e.target.getBoundingClientRect();
+      outline.style.display = 'block';
+      outline.style.top = r.top + 'px';
+      outline.style.left = r.left + 'px';
+      outline.style.width = r.width + 'px';
+      outline.style.height = r.height + 'px';
+    }
+    function onClick(e) {
+      e.preventDefault(); e.stopPropagation();
+      const target = e.target;
+      cleanup();
+      resolve(desc(target));
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(null); }
+    }
+    window.__zcPickCancel = () => { cleanup(); resolve(null); };
+    document.documentElement.style.cursor = 'crosshair';
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKey, true);
+  })`;
+
+async function togglePicker() {
+  const tab = activeTab();
+  if (!tab || !tab.url) return;
+  const view = $('#view-' + tab.id);
+  if (state.picking) {
+    try { await view.executeJavaScript('window.__zcPickCancel && __zcPickCancel()', false); } catch { /* 页面已跳转 */ }
+    setPicking(false);
+    return;
+  }
+  setPicking(true);
+  try {
+    const picked = await view.executeJavaScript(PICKER_SCRIPT, false);
+    if (picked) {
+      const sel = picked.tag + (picked.id ? '#' + picked.id : '') + (picked.classes ? '.' + picked.classes : '');
+      toast(`已选择元素：<${sel}>` + (picked.text ? `「${picked.text}」` : ''));
+    }
+  } catch {
+    toast('网页元素选择失败');
+  }
+  setPicking(false);
+}
+
+function setPicking(on) {
+  state.picking = on;
+  $('#b-picker').classList.toggle('pressed', on);
+  $('#b-picker').title = on ? '取消网页元素选择' : '选择网页元素';
+}
+
+/* ---------- 自由尺寸 ---------- */
+
+function applyResponsive() {
+  for (const tab of state.tabs) {
+    const wrap = $('#wrap-' + tab.id);
+    if (!wrap) continue;
+    if (state.responsive && tab.id === state.activeTabId) {
+      wrap.classList.add('responsive');
+      const w = parseInt($('#resp-width').value, 10);
+      const h = parseInt($('#resp-height').value, 10);
+      wrap.style.width = '';
+      wrap.style.height = '';
+      const view = wrap.querySelector('webview');
+      view.style.flex = 'none';
+      view.style.width = Number.isInteger(w) && w > 0 ? w + 'px' : '375px';
+      view.style.height = Number.isInteger(h) && h > 0 ? h + 'px' : '100%';
+    } else {
+      wrap.classList.remove('responsive');
+      wrap.style.width = '';
+      wrap.style.height = '';
+      const view = wrap.querySelector('webview');
+      view.style.flex = '';
+      view.style.width = '';
+      view.style.height = '';
+    }
+  }
+}
+
+function toggleResponsive(force) {
+  state.responsive = force !== undefined ? force : !state.responsive;
+  $('#b-responsive').classList.toggle('pressed', state.responsive);
+  $('#responsive-bar').classList.toggle('hidden', !state.responsive);
+  applyResponsive();
+}
+
+/* ---------- 面板开关与宽度 ---------- */
+
+function setPaneOpen(open) {
+  state.paneOpen = open;
+  $('#browser-pane').hidden = !open;
+  $('#btn-toggle-browser').setAttribute('aria-pressed', String(open));
+  $('#sb-browser').classList.toggle('active', open);
+  if (open) {
+    if (!state.tabs.length) createTab('');
+    renderViews();
+    syncToolbar();
+  }
+}
+
+function initPaneResize() {
+  const handle = $('#pane-resize-handle');
+  const pane = $('#browser-pane');
+  let startX = 0, startW = 0, dragging = false;
+
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startW = pane.getBoundingClientRect().width;
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const w = Math.min(900, Math.max(320, startW + (startX - e.clientX)));
+    pane.style.width = w + 'px';
+  });
+  handle.addEventListener('pointerup', () => { dragging = false; });
+  handle.addEventListener('dblclick', () => {
+    const wide = pane.getBoundingClientRect().width > 600;
+    pane.style.width = wide ? '' : Math.round(window.innerWidth * 0.6) + 'px';
+  });
+}
+
+/* ---------- 事件绑定 ---------- */
+
+function bindEvents() {
+  $('#btn-toggle-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
+  $('#sb-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
+  $('#sb-workbench').addEventListener('click', () => setPaneOpen(false));
+
+  $('#b-back').addEventListener('click', goBack);
+  $('#b-forward').addEventListener('click', goForward);
+  $('#b-reload').addEventListener('click', reloadActive);
+
+  const address = $('#b-address');
+  address.addEventListener('focus', () => address.select());
+  address.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      navigateActive(address.value);
+      address.blur();
     }
   });
 
-  showVersions();
-  activatePanel(PANELS[0].id);
-}
+  $('#b-more').addEventListener('click', () => {
+    const menu = $('#more-menu');
+    const hidden = menu.classList.contains('hidden');
+    closeMenus(hidden ? 'more-menu' : null);
+    menu.classList.toggle('hidden', !hidden);
+  });
 
-function activatePanel(id) {
-  for (const panel of PANELS) {
-    document.getElementById(`panel-${panel.id}`).classList.toggle('active', panel.id === id);
-    document.getElementById(`nav-${panel.id}`).classList.toggle('active', panel.id === id);
-  }
-}
+  $('#more-open-external').addEventListener('click', () => {
+    closeMenus(null);
+    const tab = activeTab();
+    if (tab?.url && /^https?:/i.test(tab.url)) {
+      window.workManager.openExternal(tab.url);
+    }
+  });
 
-function showVersions() {
-  const versions = window.workManager?.versions;
-  if (!versions) return;
-  document.getElementById('sidebar-footer').textContent =
-    `Electron ${versions.electron}\nNode ${versions.node}\nChromium ${versions.chrome}`;
-}
+  $('#more-devtools').addEventListener('click', () => {
+    closeMenus(null);
+    const tab = activeTab();
+    if (tab?.url) $('#view-' + tab.id).openDevTools();
+  });
 
-/* ---------- 工作台 ---------- */
+  $('#btn-add-tab').addEventListener('click', () => {
+    const menu = $('#add-menu');
+    const hidden = menu.classList.contains('hidden');
+    closeMenus(hidden ? 'add-menu' : null);
+    menu.classList.toggle('hidden', !hidden);
+  });
 
-function renderWorkbench(el) {
-  el.innerHTML = `
-    <div class="workbench">
-      <h1>工作台</h1>
-      <div class="clock" id="clock">--:--:--</div>
-      <div class="date" id="date"></div>
-      <div class="hint">
-        侧边栏可切换面板，浏览器面板已就绪 🌐<br />
-        任务管理等功能将在这里逐步加入
-      </div>
-    </div>`;
+  $('#add-browser-tab').addEventListener('click', () => {
+    closeMenus(null);
+    createTab('');
+    $('#b-address').focus();
+  });
 
-  const clock = el.querySelector('#clock');
-  const date = el.querySelector('#date');
+  $('#btn-overview').addEventListener('click', openOverview);
 
-  function tick() {
-    const now = new Date();
-    clock.textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
-    date.textContent = now.toLocaleDateString('zh-CN', {
-      year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+  $('#b-responsive').addEventListener('click', () => toggleResponsive());
+  $('#resp-fit').addEventListener('click', () => {
+    $('#resp-width').value = '';
+    $('#resp-height').value = '';
+    applyResponsive();
+  });
+  $('#resp-exit').addEventListener('click', () => toggleResponsive(false));
+  for (const id of ['resp-width', 'resp-height']) {
+    $('#' + id).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') applyResponsive();
     });
   }
 
+  $('#b-picker').addEventListener('click', togglePicker);
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.menu') && !e.target.closest('#btn-add-tab') &&
+        !e.target.closest('#b-more') && !e.target.closest('#btn-overview')) {
+      closeMenus(null);
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (state.picking) { togglePicker(); return; }
+      closeMenus(null);
+      return;
+    }
+    if (!e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.key === '1') { e.preventDefault(); setPaneOpen(false); }
+    if (e.key === '2') { e.preventDefault(); setPaneOpen(!state.paneOpen); }
+    if (!state.paneOpen) return;
+    if (e.key === 't' || e.key === 'T') { e.preventDefault(); createTab(''); $('#b-address').focus(); }
+    if (e.key === 'w' || e.key === 'W') { e.preventDefault(); if (activeTab()) closeTab(state.activeTabId); }
+  });
+
+  // 轮询历史状态（webview 无对应事件）
+  setInterval(() => {
+    const tab = activeTab();
+    if (!tab || !tab.url) return;
+    const view = $('#view-' + tab.id);
+    if (!view) return;
+    try {
+      const back = view.canGoBack();
+      const fwd = view.canGoForward();
+      if (back !== tab.canGoBack || fwd !== tab.canGoForward) {
+        tab.canGoBack = back;
+        tab.canGoForward = fwd;
+        syncToolbar();
+      }
+    } catch { /* guest 未就绪 */ }
+  }, 500);
+}
+
+/* ---------- 工作台时钟 ---------- */
+
+function startClock() {
+  const tick = () => {
+    const now = new Date();
+    $('#clock').textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
+    $('#date').textContent = now.toLocaleDateString('zh-CN', {
+      year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+    });
+  };
   tick();
   setInterval(tick, 1000);
 }
 
-/* ---------- 浏览器 ---------- */
+/* ---------- 启动 ---------- */
 
-function renderBrowser(el) {
-  el.innerHTML = `
-    <div class="browser-toolbar">
-      <button id="btn-back" title="后退">←</button>
-      <button id="btn-forward" title="前进">→</button>
-      <button id="btn-reload" title="刷新">⟳</button>
-      <button id="btn-home" title="主页">⌂</button>
-      <input id="url-input" type="text" spellcheck="false"
-             placeholder="输入网址或搜索内容，回车访问" />
-      <button id="btn-go" title="前往" class="btn-go">前往</button>
-    </div>
-    <div class="browser-body">
-      <webview id="browser-view" src="${HOME_URL}" allowpopups></webview>
-      <div class="browser-loading">加载中…</div>
-    </div>`;
-
-  const view = el.querySelector('#browser-view');
-  const urlInput = el.querySelector('#url-input');
-
-  function navigate(raw) {
-    const input = raw.trim();
-    if (!input) return;
-    const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(input);
-    const looksLikeHost = /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/i.test(input) && !input.includes(' ');
-    const url = hasScheme
-      ? input
-      : looksLikeHost
-        ? `https://${input}`
-        : `https://www.bing.com/search?q=${encodeURIComponent(input)}`;
-    view.loadURL(url);
-  }
-
-  urlInput.addEventListener('focus', () => urlInput.select());
-  urlInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') navigate(urlInput.value);
-  });
-  el.querySelector('#btn-go').addEventListener('click', () => navigate(urlInput.value));
-  el.querySelector('#btn-back').addEventListener('click', () => view.goBack());
-  el.querySelector('#btn-forward').addEventListener('click', () => view.goForward());
-  el.querySelector('#btn-reload').addEventListener('click', () => view.reload());
-  el.querySelector('#btn-home').addEventListener('click', () => view.loadURL(HOME_URL));
-
-  view.addEventListener('did-navigate', (event) => {
-    urlInput.value = event.url;
-  });
-  view.addEventListener('did-navigate-in-page', (event) => {
-    urlInput.value = event.url;
-  });
-  view.addEventListener('did-start-loading', () => el.classList.add('loading'));
-  view.addEventListener('did-stop-loading', () => el.classList.remove('loading'));
-}
+document.addEventListener('DOMContentLoaded', () => {
+  startClock();
+  bindEvents();
+  initPaneResize();
+  setPaneOpen(false);
+});
