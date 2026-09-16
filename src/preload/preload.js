@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
 // ZCode 桌面缩放：Ctrl+= / Ctrl+- / Ctrl+0 调整整窗缩放级别
 contextBridge.exposeInMainWorld('workManager', {
   versions: process.versions,
+  platform: process.platform,
   openExternal: (url) => ipcRenderer.invoke('browser:open-external', url),
   // 主进程转发的 guest 新窗口请求 → 在浏览器面板里开新标签
   onNewTab: (callback) => ipcRenderer.on('browser:new-tab', (_event, payload) => callback(payload)),

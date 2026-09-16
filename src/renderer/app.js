@@ -820,6 +820,8 @@ function bindEvents() {
 /* ---------- 启动 ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 平台类名：Windows 下为顶栏让出原生窗口按钮区域
+  document.body.classList.add('platform-' + (window.workManager.platform || 'unknown'));
   bindEvents();
   initPaneResize();
   loadViewport();

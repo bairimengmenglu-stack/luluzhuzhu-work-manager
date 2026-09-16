@@ -234,12 +234,26 @@ input {
   app-region: no-drag;
 }
 
+/* ZCode 的窗口按钮占位公式：100vw - titlebar-area-x - titlebar-area-width，
+   env() 不可用时回退为 Windows 原生三键宽度 136px */
+:root {
+  --windows-caption-inset: 0px;
+}
+
+body.platform-win32 {
+  --windows-caption-inset: calc(
+    100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 136px))
+  );
+}
+
 #titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 44px;
   padding: 0 6px 0 8px;
+  /* 右侧让出原生窗口按钮区域，避免自绘按钮与之重叠 */
+  padding-right: calc(var(--windows-caption-inset) + 6px);
   border-bottom: 1px solid var(--border);
   background: var(--background);
   flex-shrink: 0;
