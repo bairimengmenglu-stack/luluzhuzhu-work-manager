@@ -78,14 +78,137 @@
 
       <!-- 内容区：工作台 + 浏览器侧面板 -->
       <div id="content-row">
-        <section id="workbench" class="main-panel">
-          <div class="wb-center">
-            <h1 class="wb-hello">工作台</h1>
-            <div class="wb-clock" id="clock">--:--:--</div>
-            <div class="wb-date" id="date"></div>
-            <div class="wb-hint">
-              点击右上角或侧边栏「浏览器」打开内嵌浏览器面板<br />
-              支持多标签页、标签总览、自由尺寸与网页元素选择
+        <section id="workbench" class="main-panel wb">
+          <div class="page-container">
+            <!-- Hero 横幅：waimao-platform 主页同款 -->
+            <div class="hero-banner">
+              <div class="hero-left">
+                <div class="hero-title">早上好，业务员 👋</div>
+                <div class="hero-sub">产品库共 <b>128</b> 款建档产品，还有 <b>12</b> 款选品待建档入库。</div>
+              </div>
+              <button class="hero-btn">进入产品管理
+                <svg class="ic" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
+
+            <!-- 统计卡 -->
+            <div class="stat-row">
+              <div class="stat-card">
+                <span class="stat-tile" style="background:#E3E1F4;color:#7D72D5">
+                  <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                </span>
+                <span>
+                  <div class="stat-label">建档产品</div>
+                  <div class="stat-number">128</div>
+                </span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-tile" style="background:#F6DAE4;color:#AE3D64">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                </span>
+                <span>
+                  <div class="stat-label">选品待建档</div>
+                  <div class="stat-number">12</div>
+                </span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-tile" style="background:#DBE7C5;color:#536534">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+                <span>
+                  <div class="stat-label">本月客户数 <span class="chip" style="background:#DBE7C5;color:#536534">+12%</span></div>
+                  <div class="stat-number">128</div>
+                </span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-tile" style="background:#F5F4F0;color:#5C637A">
+                  <svg class="ic" viewBox="0 0 24 24"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </span>
+                <span>
+                  <div class="stat-label">采购货值 (¥)</div>
+                  <div class="stat-number">¥368,000</div>
+                </span>
+              </div>
+            </div>
+
+            <!-- 两卡行 -->
+            <div class="cards-row">
+              <div class="wb-card wb-card-quote">
+                <div class="wb-card-head">
+                  <span class="wb-card-title">最近报价</span>
+                  <button class="wb-card-link">查看全部</button>
+                </div>
+                <table class="wb-table">
+                  <thead>
+                    <tr><th>报价单号</th><th>客户</th><th>国家</th><th>金额</th><th>状态</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><b>QT-2026-0912</b></td><td>Homedepot LLC</td><td>🇺🇸 美国</td><td><b>$28,400</b></td>
+                      <td><span class="chip" style="background:#F6DAE4;color:#AE3D64">待确认</span></td>
+                    </tr>
+                    <tr>
+                      <td><b>QT-2026-0908</b></td><td>Al Futtaim Group</td><td>🇦🇪 阿联酋</td><td><b>$12,860</b></td>
+                      <td><span class="chip" style="background:#DBE7C5;color:#536534">已接受</span></td>
+                    </tr>
+                    <tr>
+                      <td><b>QT-2026-0905</b></td><td>Metro Cash &amp; Carry</td><td>🇩🇪 德国</td><td><b>$45,200</b></td>
+                      <td><span class="chip" style="background:#E3E1F4;color:#5243C7">谈判中</span></td>
+                    </tr>
+                    <tr>
+                      <td><b>QT-2026-0899</b></td><td>Walmart Inc.</td><td>🇺🇸 美国</td><td><b>$96,500</b></td>
+                      <td><span class="chip" style="background:#F6DAE4;color:#AE3D64">待确认</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="wb-card wb-card-products">
+                <div class="wb-card-head">
+                  <span class="wb-card-title">产品库速览</span>
+                  <button class="wb-card-link">产品管理</button>
+                </div>
+                <div class="prod-row">
+                  <div class="prod-thumb" style="background:#F6DAE4;color:#AE3D64">折</div>
+                  <div class="prod-info">
+                    <div class="prod-title">折叠收纳箱 45L 加厚款</div>
+                    <div class="prod-sub">SKU-1024 · 收纳整理</div>
+                  </div>
+                  <div class="prod-right"><div>¥18.60</div><div class="prod-sub">已入库</div></div>
+                </div>
+                <div class="prod-row">
+                  <div class="prod-thumb" style="background:#DBE7C5;color:#536534">保</div>
+                  <div class="prod-info">
+                    <div class="prod-title">保温壶 1.2L 304不锈钢</div>
+                    <div class="prod-sub">SKU-0917 · 厨房用品</div>
+                  </div>
+                  <div class="prod-right"><div>¥32.00</div><div class="prod-sub">已入库</div></div>
+                </div>
+                <div class="prod-row">
+                  <div class="prod-thumb" style="background:#E3E1F4;color:#5243C7">LED</div>
+                  <div class="prod-info">
+                    <div class="prod-title">LED 化妆镜 带灯台式</div>
+                    <div class="prod-sub">SKU-0866 · 个护小电</div>
+                  </div>
+                  <div class="prod-right"><div>¥27.50</div><div class="prod-sub">发品中</div></div>
+                </div>
+                <div class="prod-row">
+                  <div class="prod-thumb" style="background:#F1EFEA;color:#5C637A">宠</div>
+                  <div class="prod-info">
+                    <div class="prod-title">宠物饮水机 自动循环</div>
+                    <div class="prod-sub">SKU-0802 · 宠物用品</div>
+                  </div>
+                  <div class="prod-right"><div>¥41.20</div><div class="prod-sub">选品中</div></div>
+                </div>
+                <div class="prod-row" style="border-bottom:none">
+                  <div class="prod-thumb" style="background:#F6DAE4;color:#AE3D64">香</div>
+                  <div class="prod-info">
+                    <div class="prod-title">香薰机 超声波雾化</div>
+                    <div class="prod-sub">SKU-0795 · 家居香氛</div>
+                  </div>
+                  <div class="prod-right"><div>¥22.80</div><div class="prod-sub">已发布</div></div>
+                </div>
+              </div>
             </div>
           </div>
         </section>

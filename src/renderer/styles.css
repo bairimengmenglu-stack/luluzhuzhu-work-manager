@@ -326,42 +326,247 @@ input {
   background: var(--card);
 }
 
-.wb-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  height: 100%;
+/* ---------- 工作台（waimao-platform 主页 UI：暖白底 + 主紫品牌色） ---------- */
+
+.wb {
+  background: #fbfaf6;
+  overflow-y: auto;
 }
 
-.wb-hello {
+.page-container {
+  padding: 24px;
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.hero-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-radius: 24px;
+  padding: 28px 32px;
+  margin-bottom: 20px;
+  color: #fff;
+  background: #7d72d5;
+}
+
+.hero-title {
   font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.hero-sub {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+}
+
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5243c7;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.wb-clock {
-  font-size: 42px;
+.hero-btn:hover {
+  background: #f2f1fb;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .stat-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 18px 20px;
+}
+
+.stat-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.stat-tile .ic {
+  width: 20px;
+  height: 20px;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #5c637a;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-number {
+  font-size: 26px;
   font-weight: 700;
-  color: var(--primary);
-  font-variant-numeric: tabular-nums;
+  color: #303440;
+  line-height: 1.25;
 }
 
-.wb-date {
-  font-size: 13px;
-  color: var(--foreground-subtle);
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
-.wb-hint {
-  margin-top: 16px;
-  padding: 14px 22px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--background);
-  color: var(--foreground-subtle);
+.cards-row {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: 16px;
+}
+
+@media (max-width: 1000px) {
+  .cards-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wb-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 0 24px 12px;
+}
+
+.wb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 12px;
+}
+
+.wb-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303440;
+}
+
+.wb-card-link {
   font-size: 13px;
-  line-height: 1.9;
-  text-align: center;
+  color: #7d72d5;
+}
+
+.wb-card-link:hover {
+  color: #5243c7;
+}
+
+.wb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.wb-table th {
+  background: #f1efea;
+  color: #5c637a;
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 12px;
+}
+
+.wb-table th:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.wb-table th:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.wb-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebe9e0;
+  color: #303440;
+}
+
+.wb-table tbody tr:hover {
+  background: #f5f4f0;
+}
+
+.wb-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prod-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #ebe9e0;
+}
+
+.prod-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.prod-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.prod-title {
+  font-weight: 600;
+  color: #303440;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prod-sub {
+  font-size: 12px;
+  color: #737b96;
+}
+
+.prod-right {
+  text-align: right;
+  flex-shrink: 0;
+  color: #303440;
 }
 
 /* ---------- 图标按钮 ---------- */

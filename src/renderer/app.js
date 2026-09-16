@@ -817,24 +817,9 @@ function bindEvents() {
   }, 500);
 }
 
-/* ---------- 工作台时钟 ---------- */
-
-function startClock() {
-  const tick = () => {
-    const now = new Date();
-    $('#clock').textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
-    $('#date').textContent = now.toLocaleDateString('zh-CN', {
-      year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-    });
-  };
-  tick();
-  setInterval(tick, 1000);
-}
-
 /* ---------- 启动 ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
-  startClock();
   bindEvents();
   initPaneResize();
   loadViewport();
