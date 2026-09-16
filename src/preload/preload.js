@@ -1,8 +1,14 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
+// ZCode 桌面缩放：Ctrl+= / Ctrl+- / Ctrl+0 调整整窗缩放级别
 contextBridge.exposeInMainWorld('workManager', {
   versions: process.versions,
   openExternal: (url) => ipcRenderer.invoke('browser:open-external', url),
   // 主进程转发的 guest 新窗口请求 → 在浏览器面板里开新标签
-  onNewTab: (callback) => ipcRenderer.on('browser:new-tab', (_event, payload) => callback(payload))
+  onNewTab: (callback) => ipcRenderer.on('browser:new-tab', (_event, payload) => callback(payload)),
+  zoomStep: (delta) => {
+    const current = webFrame.getZoomLevel();
+    const next = Math.max(-2, Math.min(2, delta === 0 ? 0 : current + delta));
+    webFrame.setZoomLevel(next);
+  }
 });

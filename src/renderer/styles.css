@@ -214,7 +214,7 @@ input {
   cursor: pointer;
 }
 
-/* ---------- 标题栏 ---------- */
+/* ---------- 标题栏（隐藏原生标题栏后整栏可拖动，按钮 no-drag） ---------- */
 
 #main-col {
   display: flex;
@@ -223,12 +223,23 @@ input {
   min-width: 0;
 }
 
+.tb-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.tb-no-drag,
+.tb-no-drag * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 #titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 44px;
-  padding: 0 10px 0 14px;
+  padding: 0 6px 0 8px;
   border-bottom: 1px solid var(--border);
   background: var(--background);
   flex-shrink: 0;
@@ -237,11 +248,16 @@ input {
 .tb-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 
+.tb-nav[disabled] {
+  opacity: 0.35;
+}
+
 .tb-title {
+  margin-left: 4px;
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;

@@ -47,16 +47,22 @@
 
     <!-- 右侧区域 -->
     <div id="main-col">
-      <!-- 标题栏 -->
-      <header id="titlebar">
+      <!-- 标题栏（ZCode 布局：左侧会话导航箭头 + 标题 + 工作区芯片；整栏可拖动） -->
+      <header id="titlebar" class="tb-drag">
         <div class="tb-left">
+          <button class="tb-icon tb-nav" disabled title="后退">
+            <svg class="ic" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          </button>
+          <button class="tb-icon tb-nav" disabled title="前进">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
           <span class="tb-title">工作台</span>
           <span class="tb-chip">
             <svg class="tb-chip-ic" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
             默认工作区
           </span>
         </div>
-        <div class="tb-right">
+        <div class="tb-right tb-no-drag">
           <button id="btn-toggle-browser" class="tb-icon" aria-pressed="false" title="切换浏览器">
             <svg class="ic" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
           </button>

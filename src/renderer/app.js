@@ -117,7 +117,9 @@ function createView(tab) {
   wrap.id = 'wrap-' + tab.id;
   const view = document.createElement('webview');
   view.id = 'view-' + tab.id;
-  view.src = 'about:blank';
+  // ZCode 同款持久化会话分区：Cookie/登录态在重启后保留，代理跟随系统
+  view.setAttribute('partition', 'persist:embedded-browser');
+  view.src = tab.url || 'about:blank';
   view.setAttribute('allowpopups', '');
   wrap.appendChild(view);
   $('#views').appendChild(wrap);
@@ -180,7 +182,23 @@ function wireView(tab, view) {
 
   view.addEventListener('did-fail-load', (e) => {
     if (!e.isMainFrame || e.errorCode === -3) return;
+    const CERT_CODES = [-200, -201, -202, -203, -205, -206, -207, -210, -211];
+    if (CERT_CODES.includes(e.errorCode)) {
+      tab.errorTitle = '该站点的 HTTPS 证书不受信任';
+      tab.guestGone = false;
+    } else {
+      tab.errorTitle = '无法打开该页面';
+      tab.guestGone = false;
+    }
     tab.error = e.errorDescription || '加载失败';
+    renderViews();
+    renderError(tab);
+  });
+
+  view.addEventListener('render-process-gone', () => {
+    tab.errorTitle = '内置浏览器启动失败';
+    tab.error = '浏览器进程在显示页面前退出。检查系统环境后可以重试。';
+    tab.guestGone = true;
     renderViews();
     renderError(tab);
   });
@@ -268,9 +286,9 @@ function renderError(tab) {
   const overlay = $('#browser-loading');
   overlay.innerHTML =
     `<div style="display:flex;flex-direction:column;align-items:center;max-width:320px">` +
-    `<h3 style="font-weight:500">无法打开该页面</h3>` +
+    `<h3 style="font-weight:500">${tab.errorTitle || '无法打开该页面'}</h3>` +
     `<p style="margin-top:8px;color:var(--foreground-subtle)">${tab.error}</p>` +
-    `<button class="mini-btn" id="err-retry" style="margin-top:16px">重新加载</button></div>`;
+    `<button class="mini-btn" id="err-retry" style="margin-top:16px">${tab.guestGone ? '重试浏览器' : '重新加载'}</button></div>`;
   overlay.classList.remove('hidden');
   $('#err-retry').addEventListener('click', () => reloadActive());
 }
@@ -287,7 +305,11 @@ function navigateActive(raw) {
   }
   const view = $('#view-' + tab.id);
   tab.error = null;
-  view.loadURL(url);
+  view.loadURL(url).catch((err) => {
+    tab.error = `页面加载失败：${err.message || err}`;
+    renderViews();
+    renderError(tab);
+  });
 }
 
 function reloadActive() {
@@ -474,7 +496,29 @@ function setPicking(on) {
 
 /* ---------- 自由尺寸 ---------- */
 
+const VIEWPORT_KEY = 'browser.viewport';
+
+function loadViewport() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VIEWPORT_KEY));
+    if (saved && Number.isInteger(saved.width) && Number.isInteger(saved.height)) {
+      $('#resp-width').value = saved.width;
+      $('#resp-height').value = saved.height;
+    }
+  } catch { /* 忽略损坏数据 */ }
+}
+
+function saveViewport() {
+  const w = parseInt($('#resp-width').value, 10);
+  const h = parseInt($('#resp-height').value, 10);
+  localStorage.setItem(VIEWPORT_KEY, JSON.stringify({
+    width: Number.isInteger(w) ? w : 375,
+    height: Number.isInteger(h) ? h : 667
+  }));
+}
+
 function applyResponsive() {
+  if (state.responsive) saveViewport();
   for (const tab of state.tabs) {
     const wrap = $('#wrap-' + tab.id);
     if (!wrap) continue;
@@ -628,6 +672,12 @@ function bindEvents() {
       closeMenus(null);
       return;
     }
+    // ZCode 桌面缩放：Ctrl+= 放大 / Ctrl+- 缩小 / Ctrl+0 复位
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && ['=', '+', '-', '0'].includes(e.key)) {
+      e.preventDefault();
+      window.workManager.zoomStep(e.key === '0' ? 0 : (e.key === '-' ? -0.5 : 0.5));
+      return;
+    }
     if (!e.ctrlKey || e.shiftKey || e.altKey) return;
     if (e.key === '1') { e.preventDefault(); setPaneOpen(false); }
     if (e.key === '2') { e.preventDefault(); setPaneOpen(!state.paneOpen); }
@@ -674,6 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startClock();
   bindEvents();
   initPaneResize();
+  loadViewport();
   setPaneOpen(false);
 
   // guest 页面的新窗口请求 → 在浏览器面板内开新标签（ZCode 行为）

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
 const path = require('path');
 
 Menu.setApplicationMenu(null);
@@ -6,14 +6,50 @@ Menu.setApplicationMenu(null);
 // 与 ZCode 一致的 webview URL 协议白名单
 const SUPPORTED_URL = /^(https?|file|about|data):/i;
 
+// ZCode buildWindowsTitleBarOverlay：透明底 + 主题色按钮，高度与自绘标题栏一致
+const TITLEBAR_HEIGHT = 44;
+const titleBarOverlay = () => ({ color: '#00000000', symbolColor: '#1f1f1f', height: TITLEBAR_HEIGHT });
+
+// ZCode buildTextContextMenuTemplate：可编辑框全量编辑项；选中文字仅复制；未打包时追加 Inspect Element
+function buildContextMenu(win, params) {
+  const items = [];
+  if (params.isEditable) {
+    const f = params.editFlags;
+    items.push(
+      { label: '撤销', role: 'undo', enabled: f.canUndo },
+      { label: '重做', role: 'redo', enabled: f.canRedo },
+      { type: 'separator' },
+      { label: '剪切', role: 'cut', enabled: f.canCut },
+      { label: '复制', role: 'copy', enabled: f.canCopy },
+      { label: '粘贴', role: 'paste', enabled: f.canPaste },
+      { label: '删除', role: 'delete', enabled: f.canDelete },
+      { type: 'separator' },
+      { label: '全选', role: 'selectAll', enabled: f.canSelectAll }
+    );
+  } else if (params.selectionText.trim().length > 0) {
+    items.push({ label: '复制', role: 'copy', enabled: params.editFlags.canCopy });
+  }
+  if (!app.isPackaged) {
+    if (items.length > 0) items.push({ type: 'separator' });
+    items.push({
+      label: 'Inspect Element',
+      click: () => win.webContents.inspectElement(params.x, params.y)
+    });
+  }
+  return items;
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 960,
-    minHeight: 600,
+    minWidth: 480,
+    minHeight: 640,
     title: 'luluzhuzhu 工作管理',
     backgroundColor: '#fafafa',
+    // ZCode Windows 顶栏方案：隐藏原生标题栏，保留原生窗口按钮（overlay）
+    titleBarStyle: 'hidden',
+    titleBarOverlay: titleBarOverlay(),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -21,6 +57,12 @@ function createWindow() {
       sandbox: true,
       webviewTag: true
     }
+  });
+
+  // 右键菜单（ZCode 同款模板，仅宿主页面；guest 页面无菜单）
+  win.webContents.on('context-menu', (_event, params) => {
+    const items = buildContextMenu(win, params);
+    if (items.length > 0) Menu.buildFromTemplate(items).popup({ window: win });
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
