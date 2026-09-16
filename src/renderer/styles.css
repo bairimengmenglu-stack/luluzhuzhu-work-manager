@@ -832,3 +832,39 @@ webview {
 .hidden {
   display: none !important;
 }
+
+/* ---------- 表单校验 / 设置菜单 / 缩放 ---------- */
+
+#responsive-bar input.invalid {
+  border-color: rgba(220, 38, 38, 0.6);
+}
+
+.menu-item.danger {
+  color: #dc2626;
+}
+
+.menu-item .check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.ov-search {
+  width: 100%;
+  height: 28px;
+  margin-bottom: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 13px;
+  outline: none;
+}
+
+.ov-search:focus {
+  border-color: rgba(2, 132, 199, 0.5);
+}

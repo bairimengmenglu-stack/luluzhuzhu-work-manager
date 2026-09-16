@@ -41,9 +41,16 @@
         <div class="sb-avatar">l</div>
         <span class="sb-name">luluzhuzhu</span>
         <span class="sb-badge">本地</span>
-        <svg class="sb-ic sb-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="sb-ic sb-gear" id="sb-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       </div>
     </aside>
+
+    <!-- 设置菜单（浏览器数据与安全，ZCode settings.browser.*） -->
+    <div id="settings-menu" class="menu hidden" style="width:14rem">
+      <button class="menu-item" id="set-insecure"><span class="check" id="insecure-check"></span><span>忽略证书校验</span></button>
+      <button class="menu-item" id="set-clear-cache"><span class="check"></span><span>清除内置浏览器缓存</span></button>
+      <button class="menu-item danger" id="set-clear-all"><span class="check"></span><span>清除全部浏览器数据</span></button>
+    </div>
 
     <!-- 右侧区域 -->
     <div id="main-col">
@@ -149,10 +156,19 @@
 
             <div id="responsive-bar" class="hidden">
               <span>视口</span>
-              <input id="resp-width" type="text" value="375" /> ×
-              <input id="resp-height" type="text" value="667" />
-              <button id="resp-fit" class="mini-btn">适应窗口</button>
+              <input id="resp-width" type="text" value="375" inputmode="numeric" />
+              ×
+              <input id="resp-height" type="text" value="667" inputmode="numeric" />
+              <button id="resp-zoom" class="mini-btn" title="浏览器预览缩放">适应窗口</button>
               <button id="resp-exit" class="mini-btn">退出</button>
+              <div id="zoom-menu" class="menu hidden" style="width:9rem">
+                <button class="menu-item zoom-item" data-zoom="fit"><span class="check"></span><span>适应窗口</span></button>
+                <button class="menu-item zoom-item" data-zoom="0.5"><span class="check"></span><span>50%</span></button>
+                <button class="menu-item zoom-item" data-zoom="0.75"><span class="check"></span><span>75%</span></button>
+                <button class="menu-item zoom-item" data-zoom="1"><span class="check"></span><span>100%</span></button>
+                <button class="menu-item zoom-item" data-zoom="1.25"><span class="check"></span><span>125%</span></button>
+                <button class="menu-item zoom-item" data-zoom="1.5"><span class="check"></span><span>150%</span></button>
+              </div>
             </div>
 
             <div id="views">

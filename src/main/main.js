@@ -1,10 +1,54 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 
 Menu.setApplicationMenu(null);
 
 // 与 ZCode 一致的 webview URL 协议白名单
 const SUPPORTED_URL = /^(https?|file|about|data):/i;
+// ZCode 内嵌浏览器持久化分区（本地命名对齐应用）
+const BROWSER_PARTITION = 'persist:embedded-browser';
+let allowInsecureCerts = false;
+
+// ZCode clearEmbeddedBrowserData：cache 模式保留 Cookie/登录态，all 模式全清
+ipcMain.handle('browser:clear-data', async (_event, mode) => {
+  const s = session.fromPartition(BROWSER_PARTITION);
+  await s.clearCache();
+  if (mode === 'all') {
+    await s.clearStorageData();
+  } else {
+    await s.clearStorageData({ storages: ['shadercache', 'serviceworkers', 'cachestorage'] });
+  }
+  return true;
+});
+
+ipcMain.handle('browser:set-insecure', (_event, on) => {
+  allowInsecureCerts = !!on;
+  return true;
+});
+
+ipcMain.handle('browser:confirm-clear-all', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showMessageBox(win, {
+    type: 'warning',
+    title: '清除全部内置浏览器数据',
+    message: '清除全部内置浏览器数据？',
+    detail: '这会退出内置浏览器中已登录的网站，并删除 Cookie、站点数据和缓存。此操作不可撤销。',
+    buttons: ['确认清除', '取消'],
+    defaultId: 0,
+    cancelId: 1
+  });
+  return result.response === 0;
+});
+
+// ZCode embeddedBrowserAllowInsecureCertificates：仅对内置浏览器分区生效
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (allowInsecureCerts && webContents.session === session.fromPartition(BROWSER_PARTITION)) {
+    event.preventDefault();
+    callback(true);
+    return;
+  }
+  callback(false);
+});
 
 // ZCode buildWindowsTitleBarOverlay：透明底 + 主题色按钮，高度与自绘标题栏一致
 const TITLEBAR_HEIGHT = 44;

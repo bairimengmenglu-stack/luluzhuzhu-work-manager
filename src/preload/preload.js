@@ -10,5 +10,9 @@ contextBridge.exposeInMainWorld('workManager', {
     const current = webFrame.getZoomLevel();
     const next = Math.max(-2, Math.min(2, delta === 0 ? 0 : current + delta));
     webFrame.setZoomLevel(next);
-  }
+  },
+  // settings.browser.*：忽略证书校验 / 清除数据
+  setInsecure: (on) => ipcRenderer.invoke('browser:set-insecure', on),
+  clearData: (mode) => ipcRenderer.invoke('browser:clear-data', mode),
+  confirmClearAll: () => ipcRenderer.invoke('browser:confirm-clear-all')
 });

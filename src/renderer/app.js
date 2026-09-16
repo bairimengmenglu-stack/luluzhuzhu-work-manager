@@ -8,6 +8,7 @@ const state = {
   activeTabId: null,
   paneOpen: false,
   responsive: false,
+  responsiveZoom: 'fit',
   picking: false,
   nextTabId: 1
 };
@@ -333,7 +334,7 @@ function goForward() {
 /* ---------- 菜单 ---------- */
 
 function closeMenus(except) {
-  for (const id of ['add-menu', 'more-menu', 'tab-overview']) {
+  for (const id of ['add-menu', 'more-menu', 'tab-overview', 'zoom-menu', 'settings-menu']) {
     if (id !== except) $('#' + id).classList.add('hidden');
   }
   for (const el of document.querySelectorAll('.ctx-menu')) el.remove();
@@ -376,43 +377,68 @@ function openOverview() {
   closeMenus('tab-overview');
   pop.textContent = '';
 
-  const openTitle = document.createElement('div');
-  openTitle.className = 'ov-section-title';
-  openTitle.textContent = '打开的标签页';
-  pop.appendChild(openTitle);
+  // ZCode sidePane.searchTabs：总览带搜索框
+  const search = document.createElement('input');
+  search.className = 'ov-search';
+  search.placeholder = '搜索标签页...';
+  search.spellcheck = false;
 
-  if (!state.tabs.length) {
-    const empty = document.createElement('div');
-    empty.className = 'ov-empty';
-    empty.textContent = '没有找到标签页。';
-    pop.appendChild(empty);
-  }
-  for (const tab of state.tabs) {
-    const item = document.createElement('button');
-    item.className = 'ov-item';
-    item.innerHTML = `<span class="ov-title">${tabTitle(tab)}</span><span class="ov-time">${relTime(tab.openedAt)}打开</span>`;
-    item.addEventListener('click', () => { activateTab(tab.id); pop.classList.add('hidden'); });
-    pop.appendChild(item);
-  }
+  const listWrap = document.createElement('div');
+  const renderList = (query = '') => {
+    listWrap.textContent = '';
+    const q = query.trim().toLowerCase();
+    const match = (t) => !q || tabTitle(t).toLowerCase().includes(q) || (t.url || '').toLowerCase().includes(q);
+    const openTabs = state.tabs.filter(match);
+    const closedTabs = state.closed.filter((t) => match(t));
 
-  if (state.closed.length) {
-    const closedTitle = document.createElement('div');
-    closedTitle.className = 'ov-section-title';
-    closedTitle.textContent = '最近关闭的标签页';
-    pop.appendChild(closedTitle);
-    for (const c of state.closed.slice(0, 8)) {
+    const openTitle = document.createElement('div');
+    openTitle.className = 'ov-section-title';
+    openTitle.textContent = '打开的标签页';
+    listWrap.appendChild(openTitle);
+
+    if (!openTabs.length && !closedTabs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'ov-empty';
+      empty.textContent = '没有找到标签页。';
+      listWrap.appendChild(empty);
+      return;
+    }
+    if (!openTabs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'ov-empty';
+      empty.textContent = '没有找到标签页。';
+      listWrap.appendChild(empty);
+    }
+    for (const tab of openTabs) {
       const item = document.createElement('button');
       item.className = 'ov-item';
-      item.innerHTML = `<span class="ov-title">${c.title}</span><span class="ov-time">${relTime(c.closedAt)}关闭</span>`;
-      item.addEventListener('click', () => {
-        createTab(c.url);
-        state.closed = state.closed.filter((x) => x !== c);
-        pop.classList.add('hidden');
-      });
-      pop.appendChild(item);
+      item.innerHTML = `<span class="ov-title">${tabTitle(tab)}</span><span class="ov-time">${relTime(tab.openedAt)}打开</span>`;
+      item.addEventListener('click', () => { activateTab(tab.id); pop.classList.add('hidden'); });
+      listWrap.appendChild(item);
     }
-  }
 
+    if (closedTabs.length) {
+      const closedTitle = document.createElement('div');
+      closedTitle.className = 'ov-section-title';
+      closedTitle.textContent = '最近关闭的标签页';
+      listWrap.appendChild(closedTitle);
+      for (const c of closedTabs.slice(0, 8)) {
+        const item = document.createElement('button');
+        item.className = 'ov-item';
+        item.innerHTML = `<span class="ov-title">${c.title}</span><span class="ov-time">${relTime(c.closedAt)}关闭</span>`;
+        item.addEventListener('click', () => {
+          createTab(c.url);
+          state.closed = state.closed.filter((x) => x !== c);
+          pop.classList.add('hidden');
+        });
+        listWrap.appendChild(item);
+      }
+    }
+  };
+
+  search.addEventListener('input', () => renderList(search.value));
+  pop.append(search, listWrap);
+  renderList('');
   pop.classList.remove('hidden');
 }
 
@@ -497,6 +523,9 @@ function setPicking(on) {
 /* ---------- 自由尺寸 ---------- */
 
 const VIEWPORT_KEY = 'browser.viewport';
+const INSECURE_KEY = 'browser.allowInsecureCerts';
+// 视口尺寸范围（browser.responsive.dimensionRangeError）
+const VP_RANGE = { width: { min: 200, max: 4096 }, height: { min: 200, max: 4320 } };
 
 function loadViewport() {
   try {
@@ -517,29 +546,58 @@ function saveViewport() {
   }));
 }
 
+function inRange(dimension, value) {
+  const r = VP_RANGE[dimension];
+  return Number.isInteger(value) && value >= r.min && value <= r.max;
+}
+
+// 读取并校验视口输入；无效时标红并提示（browser.responsive.dimensionRangeError）
+function readViewportInput() {
+  const dims = [
+    ['width', $('#resp-width')],
+    ['height', $('#resp-height')]
+  ];
+  let ok = true, parsed = {};
+  for (const [dim, input] of dims) {
+    const value = Number(input.value.trim());
+    if (!inRange(dim, value)) {
+      input.classList.add('invalid');
+      const r = VP_RANGE[dim];
+      toast(`请输入 ${r.min} 到 ${r.max} 之间的整数`);
+      ok = false;
+    } else {
+      input.classList.remove('invalid');
+      parsed[dim] = value;
+    }
+  }
+  return ok ? parsed : null;
+}
+
+function applyPreviewZoom(view, viewportWidth) {
+  let z = state.responsiveZoom;
+  if (z === 'fit') z = Math.min(1, $('#views').clientWidth / viewportWidth);
+  try { view.setZoomFactor(z); } catch { /* guest 未就绪 */ }
+}
+
 function applyResponsive() {
   if (state.responsive) saveViewport();
+  const dims = readViewportInput() || { width: 375, height: 667 };
   for (const tab of state.tabs) {
     const wrap = $('#wrap-' + tab.id);
     if (!wrap) continue;
+    const view = wrap.querySelector('webview');
     if (state.responsive && tab.id === state.activeTabId) {
       wrap.classList.add('responsive');
-      const w = parseInt($('#resp-width').value, 10);
-      const h = parseInt($('#resp-height').value, 10);
-      wrap.style.width = '';
-      wrap.style.height = '';
-      const view = wrap.querySelector('webview');
       view.style.flex = 'none';
-      view.style.width = Number.isInteger(w) && w > 0 ? w + 'px' : '375px';
-      view.style.height = Number.isInteger(h) && h > 0 ? h + 'px' : '100%';
+      view.style.width = dims.width + 'px';
+      view.style.height = dims.height + 'px';
+      applyPreviewZoom(view, dims.width);
     } else {
       wrap.classList.remove('responsive');
-      wrap.style.width = '';
-      wrap.style.height = '';
-      const view = wrap.querySelector('webview');
       view.style.flex = '';
       view.style.width = '';
       view.style.height = '';
+      try { view.setZoomFactor(1); } catch { /* guest 未就绪 */ }
     }
   }
 }
@@ -645,17 +703,72 @@ function bindEvents() {
   $('#btn-overview').addEventListener('click', openOverview);
 
   $('#b-responsive').addEventListener('click', () => toggleResponsive());
-  $('#resp-fit').addEventListener('click', () => {
-    $('#resp-width').value = '';
-    $('#resp-height').value = '';
-    applyResponsive();
+  // 预览缩放档位（browser.responsive.zoom）：适应窗口 / 百分比
+  $('#resp-zoom').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = $('#zoom-menu');
+    const hidden = menu.classList.contains('hidden');
+    closeMenus(hidden ? 'zoom-menu' : null);
+    if (!hidden) return;
+    // zoom 菜单在 .side-pane（relative）内，需换算成面板内坐标
+    const btn = e.currentTarget.getBoundingClientRect();
+    const pane = document.querySelector('.side-pane').getBoundingClientRect();
+    placeMenu(menu, btn.left - pane.left, btn.bottom - pane.top + 4);
   });
+  for (const item of document.querySelectorAll('.zoom-item')) {
+    item.addEventListener('click', () => {
+      state.responsiveZoom = item.dataset.zoom === 'fit' ? 'fit' : Number(item.dataset.zoom);
+      $('#resp-zoom').textContent = state.responsiveZoom === 'fit' ? '适应窗口' : `${Math.round(state.responsiveZoom * 100)}%`;
+      for (const it of document.querySelectorAll('.zoom-item')) {
+        it.querySelector('.check').textContent = it === item ? '✓' : '';
+      }
+      $('#zoom-menu').classList.add('hidden');
+      applyResponsive();
+    });
+  }
   $('#resp-exit').addEventListener('click', () => toggleResponsive(false));
   for (const id of ['resp-width', 'resp-height']) {
     $('#' + id).addEventListener('keydown', (e) => {
       if (e.key === 'Enter') applyResponsive();
     });
+    $('#' + id).addEventListener('input', () => $('#' + id).classList.remove('invalid'));
   }
+
+  // 设置菜单（settings.browser.*）：忽略证书校验 / 清除缓存 / 清除全部数据
+  $('#sb-gear').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = $('#settings-menu');
+    const hidden = menu.classList.contains('hidden');
+    closeMenus(hidden ? 'settings-menu' : null);
+    if (!hidden) return;
+    $('#insecure-check').textContent = localStorage.getItem(INSECURE_KEY) === '1' ? '✓' : '';
+    const rect = e.currentTarget.getBoundingClientRect();
+    menu.classList.remove('hidden');
+    const menuHeight = menu.getBoundingClientRect().height;
+    menu.style.left = Math.max(8, rect.left - 110) + 'px';
+    menu.style.top = Math.max(8, rect.top - menuHeight - 10) + 'px';
+  });
+
+  $('#set-insecure').addEventListener('click', () => {
+    const on = localStorage.getItem(INSECURE_KEY) !== '1';
+    localStorage.setItem(INSECURE_KEY, on ? '1' : '0');
+    window.workManager.setInsecure(on);
+    closeMenus(null);
+    toast(on ? '已开启忽略证书校验' : '已关闭忽略证书校验');
+  });
+
+  $('#set-clear-cache').addEventListener('click', async () => {
+    closeMenus(null);
+    await window.workManager.clearData('cache');
+    toast('内置浏览器缓存已清除');
+  });
+
+  $('#set-clear-all').addEventListener('click', async () => {
+    closeMenus(null);
+    if (!(await window.workManager.confirmClearAll())) return;
+    await window.workManager.clearData('all');
+    toast('内置浏览器数据已全部清除');
+  });
 
   $('#b-picker').addEventListener('click', togglePicker);
 
@@ -725,6 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   initPaneResize();
   loadViewport();
+  window.workManager.setInsecure?.(localStorage.getItem(INSECURE_KEY) === '1');
   setPaneOpen(false);
 
   // guest 页面的新窗口请求 → 在浏览器面板内开新标签（ZCode 行为）
