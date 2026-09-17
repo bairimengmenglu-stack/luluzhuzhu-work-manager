@@ -1320,7 +1320,11 @@ function bindEvents() {
   $('#b-picker').addEventListener('click', togglePicker);
   $('#b-local').addEventListener('click', () => toggleLocalFiles());
   $('#lf-close').addEventListener('click', () => toggleLocalFiles(false));
-  $('#lightbox').addEventListener('click', () => $('#lightbox').classList.add('hidden'));
+  $('#lb-prev').addEventListener('click', () => lightboxStep(-1));
+  $('#lb-next').addEventListener('click', () => lightboxStep(1));
+  $('#lb-del').addEventListener('click', lightboxDelete);
+  $('#lb-close').addEventListener('click', closeLightbox);
+  $('#lightbox-img').addEventListener('click', () => lightboxStep(1));
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.menu') && !e.target.closest('#btn-add-tab') &&
@@ -1330,6 +1334,13 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (e) => {
+    // 画廊键盘导航
+    if (state.lightbox) {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxStep(-1); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); lightboxStep(1); return; }
+      if (e.key === 'Delete') { e.preventDefault(); lightboxDelete(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+    }
     if (e.key === 'Escape') {
       if (state.picking) { togglePicker(); return; }
       closeMenus(null);
@@ -1465,16 +1476,19 @@ function renderSelection() {
     }
     list.appendChild(row);
 
-    // Fatkun 式分类图片网格：点击条目展开
+    // Fatkun 式分类图片网格：点击条目展开；缩略图点击进画廊，悬停出删除按钮
     if (state.expandedSelId === item.id) {
       const wrap = document.createElement('div');
       wrap.className = 'sel-grid-wrap';
       const catLabels = { main: '主图', sku: 'SKU', detail: '详情' };
-      let any = false;
+      const flat = [];
+      for (const cat of ['main', 'sku', 'detail']) {
+        for (const rel of (item.filesByCat && item.filesByCat[cat]) || []) flat.push({ rel, cat });
+      }
+      const any = flat.length > 0;
       for (const cat of ['main', 'sku', 'detail']) {
         const files = (item.filesByCat && item.filesByCat[cat]) || [];
         if (!files.length) continue;
-        any = true;
         const head = document.createElement('div');
         head.className = 'sel-grid-title';
         head.textContent = `${catLabels[cat]}（${files.length}）`;
@@ -1482,13 +1496,25 @@ function renderSelection() {
         const cells = document.createElement('div');
         cells.className = 'sel-grid';
         for (const rel of files) {
+          const cell = document.createElement('div');
+          cell.className = 'sel-cell';
           const img = document.createElement('img');
           img.className = 'sel-grid-thumb';
           img.src = fileUrl(rel);
           img.loading = 'lazy';
-          img.title = `${rel}（点击放大）`;
-          img.addEventListener('click', () => openLightbox(fileUrl(rel)));
-          cells.appendChild(img);
+          img.title = `${rel}（点击预览）`;
+          const flatIndex = flat.findIndex((f) => f.rel === rel);
+          img.addEventListener('click', () => openLightbox(item.id, flat));
+          const del = document.createElement('button');
+          del.className = 'sel-del';
+          del.textContent = '×';
+          del.title = '删除此图';
+          del.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await deleteArchiveImage(item, rel);
+          });
+          cell.append(img, del);
+          cells.appendChild(cell);
         }
         wrap.appendChild(cells);
       }
@@ -1649,9 +1675,84 @@ async function loadArchiveList() {
   }
 }
 
-function openLightbox(src) {
-  $('#lightbox-img').src = src;
+/* ---------- 画廊预览（画廊模式：左右切换 + 删除） ---------- */
+
+function flatFiles(item) {
+  const flat = [];
+  for (const cat of ['main', 'sku', 'detail']) {
+    for (const rel of (item.filesByCat && item.filesByCat[cat]) || []) flat.push({ rel, cat });
+  }
+  return flat;
+}
+
+function openLightbox(itemId, flat) {
+  if (!flat.length) return;
+  state.lightbox = { itemId, files: flat, index: 0 };
+  renderLightbox();
   $('#lightbox').classList.remove('hidden');
+}
+
+function closeLightbox() {
+  state.lightbox = null;
+  $('#lightbox').classList.add('hidden');
+}
+
+function renderLightbox() {
+  const lb = state.lightbox;
+  if (!lb) return;
+  const cur = lb.files[lb.index];
+  $('#lightbox-img').src = fileUrl(cur.rel);
+  $('#lightbox-counter').textContent = `${lb.index + 1} / ${lb.files.length}`;
+  $('#lb-prev').disabled = lb.files.length <= 1;
+  $('#lb-next').disabled = lb.files.length <= 1;
+  $('#lb-del').disabled = false;
+}
+
+function lightboxStep(d) {
+  const lb = state.lightbox;
+  if (!lb || lb.files.length <= 1) return;
+  lb.index = (lb.index + d + lb.files.length) % lb.files.length;
+  renderLightbox();
+}
+
+async function lightboxDelete() {
+  const lb = state.lightbox;
+  if (!lb) return;
+  const item = readSelection().find((i) => i.id === lb.itemId);
+  if (!item) { closeLightbox(); return; }
+  const cur = lb.files[lb.index];
+  const base = item.file ? item.file.replace(/\.html$/, '') : '';
+  const result = await window.workManager.deleteImage(base, cur.rel);
+  if (!result?.ok) { toast('删除失败'); return; }
+  // 本地清单同步
+  removeItemFile(item.id, cur.rel);
+  lb.files.splice(lb.index, 1);
+  if (!lb.files.length) { closeLightbox(); return; }
+  if (lb.index >= lb.files.length) lb.index = lb.files.length - 1;
+  renderLightbox();
+}
+
+function removeItemFile(itemId, rel) {
+  const items = readSelection().map((i) => {
+    if (i.id !== itemId || !i.filesByCat) return i;
+    const filesByCat = {};
+    let count = 0;
+    for (const [cat, arr] of Object.entries(i.filesByCat)) {
+      filesByCat[cat] = arr.filter((f) => f !== rel);
+      count += filesByCat[cat].length;
+    }
+    return { ...i, filesByCat, images: count };
+  });
+  writeSelection(items);
+  renderSelection();
+}
+
+async function deleteArchiveImage(item, rel) {
+  const base = item.file ? item.file.replace(/\.html$/, '') : '';
+  if (!base) return;
+  const result = await window.workManager.deleteImage(base, rel);
+  if (!result?.ok) { toast('删除失败'); return; }
+  removeItemFile(item.id, rel);
 }
 
 /* ---------- 启动 ---------- */

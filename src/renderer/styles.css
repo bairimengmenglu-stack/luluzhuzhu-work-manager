@@ -931,7 +931,7 @@ body.platform-win32 {
   flex-shrink: 0;
 }
 
-/* ---------- 灯箱（应用内图片预览） ---------- */
+/* ---------- 灯箱（画廊模式：左右切换 + 删除） ---------- */
 
 #lightbox {
   position: fixed;
@@ -941,15 +941,105 @@ body.platform-win32 {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.72);
-  cursor: zoom-out;
 }
 
 #lightbox img {
-  max-width: 92vw;
-  max-height: 92vh;
+  max-width: 88vw;
+  max-height: 84vh;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+}
+
+.lb-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 28px;
+  line-height: 44px;
+  text-align: center;
+  padding: 0;
+}
+
+.lb-nav:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+#lb-prev {
+  left: 28px;
+}
+
+#lb-next {
+  right: 28px;
+}
+
+#lb-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#lb-counter {
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lb-danger {
+  color: #ffb4c4;
+  border-color: rgba(255, 180, 196, 0.5);
+  background: transparent;
+}
+
+.lb-danger:hover {
+  background: rgba(174, 61, 100, 0.35);
+  color: #fff;
+}
+
+/* 网格单元：缩略图 + 悬停删除按钮 */
+.sel-cell {
+  position: relative;
+}
+
+.sel-cell .sel-grid-thumb {
+  display: block;
+}
+
+.sel-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.sel-cell:hover .sel-del {
+  opacity: 1;
+}
+
+.sel-del:hover {
+  background: #ae3d64;
 }
 
 /* ---------- 图标按钮 ---------- */

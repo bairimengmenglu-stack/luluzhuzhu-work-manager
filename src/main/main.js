@@ -426,6 +426,32 @@ ipcMain.handle('browser:list-archive', async () => {
   }
 });
 
+// 删除单张建档图片，并同步元数据 JSON 里的分类路径
+ipcMain.handle('browser:delete-image', async (_event, payload) => {
+  try {
+    if (typeof payload !== 'object' || payload === null) return { ok: false };
+    const { base, rel } = payload;
+    if (typeof base !== 'string' || !VALID_BASE.test(base) || typeof rel !== 'string' || !rel) return { ok: false };
+    if (!rel.startsWith(base + '_files/')) return { ok: false };
+    const fname = rel.slice((base + '_files/').length);
+    if (!fname || fname.includes('/') || fname.includes('..')) return { ok: false };
+    await fsPromises.rm(path.join(ARCHIVE_DIR, rel), { force: true });
+    try {
+      const jsonPath = path.join(ARCHIVE_DIR, base + '.json');
+      const j = JSON.parse(await fsPromises.readFile(jsonPath, 'utf8'));
+      if (j.images && typeof j.images === 'object') {
+        for (const cat of Object.keys(j.images)) {
+          if (Array.isArray(j.images[cat])) j.images[cat] = j.images[cat].filter((p) => p !== rel);
+        }
+        await fsPromises.writeFile(jsonPath, JSON.stringify(j, null, 2), 'utf8');
+      }
+    } catch { /* 元数据同步失败不影响删除 */ }
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
