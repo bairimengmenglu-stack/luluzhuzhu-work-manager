@@ -811,6 +811,7 @@ function initPaneResize() {
 /* ---------- 事件绑定 ---------- */
 
 function bindEvents() {
+  $('#btn-toggle-sidebar').addEventListener('click', () => setSidebarOpen(!state.sidebarOpen));
   $('#btn-toggle-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
   $('#sb-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
   $('#sb-workbench').addEventListener('click', () => setPaneOpen(false));
