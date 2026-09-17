@@ -357,6 +357,50 @@ function syncToolbar() {
   $('#ic-reload').classList.toggle('spinning', !!tab?.isLoading);
   $('#b-reload').title = tab?.isLoading ? '停止' : '刷新';
   syncAddress();
+  updateBookmarkState();
+}
+
+// 选品收藏：og:title → h1 → 页面标题，取商品名称
+const PRODUCT_NAME_SCRIPT = `(() => {
+  try {
+    const meta = document.querySelector('meta[property="og:title"]');
+    if (meta && meta.content && meta.content.trim()) return meta.content.trim();
+    const h1 = document.querySelector('h1');
+    if (h1 && h1.textContent.trim()) return h1.textContent.trim();
+  } catch {}
+  return '';
+})()`;
+
+function updateBookmarkState() {
+  const btn = $('#b-bookmark');
+  const tab = activeTab();
+  const hasPage = !!tab?.url && tab.url !== 'about:blank' && !tab.error;
+  btn.disabled = !hasPage;
+  btn.title = hasPage ? '收藏到选品清单' : '没有可收藏的页面';
+  btn.classList.toggle('starred', hasPage && readSelection().some((i) => i.url === tab.url));
+}
+
+async function bookmarkCurrentPage() {
+  const tab = activeTab();
+  if (!tab?.url || tab.url === 'about:blank') {
+    toast('当前没有可收藏的页面');
+    return;
+  }
+  const items = readSelection();
+  if (items.some((i) => i.url === tab.url)) {
+    toast('该页面已在选品清单中');
+    return;
+  }
+  let name = '';
+  try {
+    name = await $('#view-' + tab.id).executeJavaScript(PRODUCT_NAME_SCRIPT, false);
+  } catch { /* 页面未就绪用标题兜底 */ }
+  if (!name) name = tabTitle(tab);
+  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now() });
+  writeSelection(items);
+  renderSelection();
+  updateBookmarkState();
+  toast(`已收藏：${name}`);
 }
 
 function syncAddress() {
@@ -816,22 +860,6 @@ function bindEvents() {
   $('#sel-rail').addEventListener('click', () => setSelectionCollapsed(false));
   $('#sel-collapse').addEventListener('click', () => setSelectionCollapsed(true));
   $('#sel-exit').addEventListener('click', exitSelection);
-  $('#sel-add-current').addEventListener('click', () => {
-    const tab = activeTab();
-    if (!tab?.url) {
-      toast('浏览器还没有打开页面');
-      return;
-    }
-    const items = readSelection();
-    if (items.some((i) => i.url === tab.url)) {
-      toast('该页面已在清单中');
-      return;
-    }
-    items.unshift({ id: Date.now(), title: tabTitle(tab), url: tab.url, addedAt: Date.now() });
-    writeSelection(items);
-    renderSelection();
-    toast('已加入选品清单');
-  });
   $('#sel-clear').addEventListener('click', () => {
     writeSelection([]);
     renderSelection();
@@ -889,6 +917,7 @@ function bindEvents() {
 
   $('#btn-overview').addEventListener('click', openOverview);
 
+  $('#b-bookmark').addEventListener('click', bookmarkCurrentPage);
   $('#b-responsive').addEventListener('click', () => toggleResponsive());
   // 预览缩放档位（browser.responsive.zoom）：适应窗口 / 百分比
   $('#resp-zoom').addEventListener('click', (e) => {
@@ -1060,11 +1089,6 @@ function renderSelection() {
     url.textContent = item.url;
     info.append(title, url);
 
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.style.cssText = 'background:#E3E1F4;color:#5243C7';
-    chip.textContent = '待建档';
-
     const remove = document.createElement('button');
     remove.className = 'sel-remove';
     remove.title = '移除';
@@ -1074,7 +1098,7 @@ function renderSelection() {
       renderSelection();
     });
 
-    row.append(idx, info, chip, remove);
+    row.append(idx, info, remove);
     list.appendChild(row);
   });
 }

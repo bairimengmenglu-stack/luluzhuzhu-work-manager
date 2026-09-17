@@ -863,6 +863,15 @@ body.platform-win32 {
   color: var(--foreground);
 }
 
+/* 选品收藏星标：已收藏时填充玫瑰色 */
+#b-bookmark.starred {
+  color: #ae3d64;
+}
+
+#b-bookmark.starred .ic {
+  fill: currentColor;
+}
+
 @keyframes ic-spin {
   to {
     transform: rotate(360deg);
