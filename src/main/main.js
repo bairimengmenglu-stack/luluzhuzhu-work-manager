@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session, net } = require('electron');
 const fsPromises = require('fs/promises');
 const path = require('path');
 
@@ -227,46 +227,60 @@ const EXT_BY_MIME = {
 };
 const VALID_BASE = /^[\w.-]+$/;
 
+// 选品建档图片下载：走内嵌浏览器同一 session（命中浏览器磁盘缓存、共享登录 Cookie），
+// 按 主图/sku/视频/详情 分类命名；单图失败跳过
 ipcMain.handle('browser:archive-images', async (_event, payload) => {
   try {
     if (typeof payload !== 'object' || payload === null) return { ok: false, map: {} };
-    const { baseName, referer, images } = payload;
-    if (typeof baseName !== 'string' || !VALID_BASE.test(baseName) || !Array.isArray(images)) {
+    const { baseName, referer, categorized } = payload;
+    if (typeof baseName !== 'string' || !VALID_BASE.test(baseName) || typeof categorized !== 'object' || categorized === null) {
       return { ok: false, map: {} };
     }
     const dir = path.join(ARCHIVE_DIR, `${baseName}_files`);
     await fsPromises.mkdir(dir, { recursive: true });
-    // Fatkun 式批量下载：并发 4，15s 超时，<2KB 的小图标跳过
-    const queue = [...new Set(images)].filter((u) => /^https?:\/\//i.test(u)).slice(0, 80);
+    const cats = {};
+    for (const cat of ['video', 'sku', 'main', 'other']) {
+      if (Array.isArray(categorized[cat])) cats[cat] = [...new Set(categorized[cat])].filter((u) => /^https?:\/\//i.test(u)).slice(0, 80);
+    }
     const map = {};
-    let cursor = 0;
+    const failed = [];
+    const queue = [];
+    for (const cat of Object.keys(cats)) {
+      for (const url of cats[cat]) queue.push({ cat, url });
+    }
+    const counters = {};
+    const isVideo = (u) => /\.(mp4|m4v|mov|webm)(\?|$)/i.test(u);
     const worker = async () => {
-      while (cursor < queue.length) {
-        const url = queue[cursor++];
+      while (queue.length) {
+        const { cat, url } = queue.shift();
         try {
-          const res = await fetch(url, {
-            headers: {
-              'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
-              referer: typeof referer === 'string' && referer ? referer : url,
-              accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
-            },
-            signal: AbortSignal.timeout(15000),
+          const video = isVideo(url);
+          if (/\.m3u8(\?|$)/i.test(url)) continue; // HLS 流无法单文件保存
+          const res = await net.fetch(url, {
+            session: session.fromPartition(BROWSER_PARTITION),
+            useSessionCookies: true,
+            signal: AbortSignal.timeout(video ? 60000 : 15000),
             redirect: 'follow'
           });
-          if (!res.ok) continue;
+          // 注意：net.fetch 不能手动注入 referer 头（ERR_BLOCKED_BY_CLIENT），共享 session 自带缓存与 Cookie
+          if (!res.ok) { if (failed.length < 5) failed.push(`${res.status} ${url.slice(0, 60)}`); continue; }
           const buf = Buffer.from(await res.arrayBuffer());
-          if (buf.length < 2048) continue;
+          if (!video && buf.length < 2048) continue;
           const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-          const ext = EXT_BY_MIME[mime]
-            || (path.extname(new URL(url).pathname).match(/^(\.\w{1,5})$/) ? RegExp.$1 : '.img');
-          const fname = `${Object.keys(map).length + 1}${ext}`;
+          let ext = EXT_BY_MIME[mime]
+            || (path.extname(new URL(url).pathname).match(/^(\.\w{1,5})$/) ? RegExp.$1 : '');
+          if (!ext) ext = video ? '.mp4' : mime.startsWith('video/') ? '.mp4' : '.img';
+          counters[cat] = (counters[cat] || 0) + 1;
+          const fname = `${cat}_${counters[cat]}${ext}`;
           await fsPromises.writeFile(path.join(dir, fname), buf);
           map[url] = `${baseName}_files/${fname}`;
-        } catch { /* 单图失败跳过，HTML 保留远程链接 */ }
+        } catch (err) {
+          if (failed.length < 5) failed.push(`${err?.message || err} ${url.slice(0, 60)}`);
+        }
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
-    return { ok: true, map };
+    return { ok: true, map, failed };
   } catch (err) {
     return { ok: false, map: {}, error: err?.message || String(err) };
   }
@@ -290,9 +304,16 @@ ipcMain.handle('browser:archive-page', async (_event, payload) => {
       name = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
     }
     await fsPromises.writeFile(path.join(ARCHIVE_DIR, `${name}.html`), html, 'utf8');
+    const metaOut = { url, title: typeof title === 'string' ? title : '', savedAt: new Date().toISOString() };
+    // 渲染层提取的商品信息（价格/参数/SKU/分类图片）合并进元数据
+    if (typeof payload.meta === 'object' && payload.meta !== null) {
+      for (const [k, v] of Object.entries(payload.meta)) {
+        if (v !== undefined && v !== null) metaOut[k] = v;
+      }
+    }
     await fsPromises.writeFile(
       path.join(ARCHIVE_DIR, `${name}.json`),
-      JSON.stringify({ url, title: typeof title === 'string' ? title : '', savedAt: new Date().toISOString() }, null, 2),
+      JSON.stringify(metaOut, null, 2),
       'utf8'
     );
     return { ok: true, file: `${name}.html` };

@@ -360,71 +360,87 @@ function syncToolbar() {
   updateBookmarkState();
 }
 
-// 选品收藏：og:title → h1 → 页面标题，取商品名称
-const PRODUCT_NAME_SCRIPT = `(() => {
-  try {
-    const meta = document.querySelector('meta[property="og:title"]');
-    if (meta && meta.content && meta.content.trim()) return meta.content.trim();
-    const h1 = document.querySelector('h1');
-    if (h1 && h1.textContent.trim()) return h1.textContent.trim();
-  } catch {}
-  return '';
-})()`;
-
-// Fatkun 式识图：img src / 常见懒加载属性 / srcset / og:image，绝对化 + 去重，仅 http(s)
-const COLLECT_IMAGES_SCRIPT = `(() => {
-  const out = new Set();
+// 选品建档：页面内一次性提取 分类图片 + 商品信息（标题/价格/SKU/参数）
+const PRODUCT_DATA_SCRIPT = `(() => {
   const abs = (u) => {
     try {
       const x = new URL(u, location.href);
       return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null;
     } catch { return null; }
   };
+  const cats = { video: [], sku: [], main: [], other: [] };
+  const seen = new Set();
+  const push = (cat, u) => { if (u && !seen.has(u)) { seen.add(u); cats[cat].push(u); } };
+  const ancestorText = (el) => {
+    let s = '', n = el;
+    for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
+      s += ' ' + (n.className || '') + ' ' + (n.id || '');
+    }
+    return s.toLowerCase();
+  };
+  for (const v of document.querySelectorAll('video')) {
+    const src = v.currentSrc || v.src || (v.querySelector('source') && v.querySelector('source').src);
+    push('video', abs(src));
+    push('video', abs(v.poster));
+  }
   const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
   for (const img of document.querySelectorAll('img')) {
+    const urls = [];
     for (const a of LAZY) {
-      const v = img.getAttribute(a);
-      if (v) { const u = abs(v); if (u) out.add(u); }
+      const u = abs(img.getAttribute(a));
+      if (u) urls.push(u);
     }
     if (img.srcset) {
       for (const part of img.srcset.split(',')) {
         const u = abs(part.trim().split(/\\s+/)[0]);
-        if (u) out.add(u);
+        if (u) urls.push(u);
       }
     }
+    if (!urls.length) continue;
+    const anc = ancestorText(img);
+    const cat = /sku|variant|prop|color/i.test(anc) ? 'sku'
+      : /gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) ? 'main' : 'other';
+    for (const u of urls) push(cat, u);
   }
-  for (const s of document.querySelectorAll('source[srcset]')) {
-    for (const part of s.srcset.split(',')) {
-      const u = abs(part.trim().split(/\\s+/)[0]);
-      if (u) out.add(u);
+  const ogImg = document.querySelector('meta[property="og:image"]');
+  if (ogImg && ogImg.content) {
+    const u = abs(ogImg.content);
+    if (u && !seen.has(u)) { seen.add(u); cats.main.unshift(u); }
+  }
+  const info = {};
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  if (ogTitle && ogTitle.content && ogTitle.content.trim()) info.title = ogTitle.content.trim();
+  if (!info.title) {
+    const h1 = document.querySelector('h1');
+    if (h1) info.title = h1.textContent.trim();
+  }
+  const priceEl = document.querySelector('[class*="price" i]');
+  if (priceEl) info.price = (priceEl.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40);
+  info.skus = [];
+  const skuSeen = new Set();
+  for (const el of document.querySelectorAll('[class*="sku" i] img, [class*="sku" i] button, [class*="sku" i] li, [class*="sku" i] [class*="value" i]')) {
+    const t = (el.getAttribute('aria-label') || el.title || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
+    const img = el.tagName === 'IMG' ? el : el.querySelector('img');
+    const u = img ? abs(img.getAttribute('src') || img.getAttribute('data-src') || '') : null;
+    const key = t + '|' + (u || '');
+    if ((t || u) && !skuSeen.has(key)) {
+      skuSeen.add(key);
+      const entry = {};
+      if (t) entry.name = t;
+      if (u) entry.img = u;
+      info.skus.push(entry);
     }
+    if (info.skus.length >= 30) break;
   }
-  const meta = document.querySelector('meta[property="og:image"]');
-  if (meta && meta.content) { const u = abs(meta.content); if (u) out.add(u); }
-  return Array.from(out).slice(0, 80);
+  info.params = [];
+  const pSeen = new Set();
+  for (const li of document.querySelectorAll('[class*="attr" i] li, [class*="attr" i] td, [class*="param" i] li, [class*="param" i] td, [class*="parameter" i] li')) {
+    const t = (li.textContent || '').trim().replace(/\\s+/g, ' ');
+    if (t && t.length <= 120 && !pSeen.has(t)) { pSeen.add(t); info.params.push(t); }
+    if (info.params.length >= 60) break;
+  }
+  return { images: cats, info };
 })()`;
-
-// 图下载完成后：把页内图片链接改写为本地相对路径，再序列化返回
-const REWRITE_IMAGES_FN = `function (map) {
-  const norm = (u) => { try { return new URL(u, location.href).href } catch { return u } };
-  const lookup = {};
-  for (const [url, rel] of Object.entries(map)) lookup[norm(url)] = rel;
-  const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
-  for (const img of document.querySelectorAll('img')) {
-    for (const a of LAZY) {
-      const v = img.getAttribute(a);
-      if (v) { const rel = lookup[norm(v)]; if (rel) img.setAttribute(a, rel); }
-    }
-    if (img.srcset) {
-      img.srcset = img.srcset.split(',').map((part) => {
-        const seg = part.trim().split(/\\s+/);
-        const rel = lookup[norm(seg[0])];
-        return rel ? [rel, seg[1]].filter(Boolean).join(' ') : part.trim();
-      }).join(', ');
-    }
-  }
-  return document.documentElement.outerHTML;
-}`;
 
 function updateBookmarkState() {
   const btn = $('#b-bookmark');
@@ -442,50 +458,112 @@ async function bookmarkCurrentPage() {
     return;
   }
   const items = readSelection();
+  // 与选品清单同步：已收藏 → 星标点击 = 删除（含建档文件）
   if (items.some((i) => i.url === tab.url)) {
-    toast('该页面已在选品清单中');
+    const item = items.find((i) => i.url === tab.url);
+    if (item.file) await window.workManager.deleteArchive(item.file);
+    writeSelection(items.filter((i) => i.url !== tab.url));
+    renderSelection();
+    updateBookmarkState();
+    toast('已从选品清单移除');
     return;
   }
+
   const view = $('#view-' + tab.id);
-  let name = '';
+  let data = null;
   try {
-    name = await view.executeJavaScript(PRODUCT_NAME_SCRIPT, false);
-  } catch { /* 页面未就绪用标题兜底 */ }
+    data = await view.executeJavaScript(PRODUCT_DATA_SCRIPT, false);
+  } catch { /* 页面未就绪时全部走兜底 */ }
+  let name = data?.info?.title || '';
   if (!name) name = tabTitle(tab);
 
-  // 选品建档：识别并批量下载图片 → 改写页内链接 → 保存完整 HTML
-  toast('正在建档：识别并下载图片…');
+  // 先抓当前 HTML 快照（改写离线完成，不依赖页面存活）
+  let html = '';
+  try {
+    html = await view.executeJavaScript('document.documentElement.outerHTML', false);
+  } catch { /* 无法获取 */ }
+
   const host = (hostOf(tab.url) || 'page').replace(/^www\./, '').replace(/[^\w.-]/g, '') || 'page';
   const baseName = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
-  let html = '';
-  let map = {};
-  try {
-    const images = await view.executeJavaScript(COLLECT_IMAGES_SCRIPT, false);
-    if (Array.isArray(images) && images.length) {
-      const result = await window.workManager.archiveImages({ baseName, referer: tab.url, images });
-      if (result?.ok && result.map && Object.keys(result.map).length) {
-        map = result.map;
-        html = await view.executeJavaScript(`(${REWRITE_IMAGES_FN})(${JSON.stringify(map)})`, false);
-      }
+  const item = {
+    id: Date.now(),
+    title: name,
+    url: tab.url,
+    addedAt: Date.now(),
+    file: '',
+    images: 0,
+    status: 'archiving',
+    info: {
+      price: data?.info?.price || '',
+      params: data?.info?.params || [],
+      skus: data?.info?.skus || [],
+      images: data?.images || {}
     }
-  } catch { /* 图片环节失败则退回纯 HTML */ }
-  if (!html) {
-    try { html = await view.executeJavaScript('document.documentElement.outerHTML', false); } catch { /* 无法获取 */ }
-  }
-
-  let file = '';
-  if (html) {
-    const result = await window.workManager.archivePage({ baseName, html, url: tab.url, title: name });
-    if (result?.ok) file = result.file;
-  }
-
-  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now(), file, images: Object.keys(map).length });
+  };
+  items.unshift(item);
   writeSelection(items);
   renderSelection();
   updateBookmarkState();
-  toast(file
-    ? `已收藏并建档：${name}（图 ${Object.keys(map).length} 张）`
-    : `已收藏（建档失败）：${name}`);
+  toast('已收藏，后台建档中…');
+
+  // 异步建档：下载/改写/落盘完成后回填条目
+  (async () => {
+    try {
+      const stillExists = () => readSelection().some((i) => i.id === item.id);
+      const cats = item.info.images;
+      const total = Object.values(cats).reduce((s, a) => s + a.length, 0);
+      let map = {};
+      if (total) {
+        const result = await window.workManager.archiveImages({ baseName, referer: tab.url, categorized: cats });
+        if (result?.ok && result.map) map = result.map;
+      }
+      if (!stillExists()) {
+        await window.workManager.deleteArchive(baseName + '.html');
+        return;
+      }
+      // 离线改写：原始 URL 与 HTML 转义形式（& → &amp;）都替换
+      for (const [url, rel] of Object.entries(map)) {
+        html = html.split(url).join(rel);
+        const esc = url.replace(/&/g, '&amp;');
+        if (esc !== url) html = html.split(esc).join(rel);
+      }
+      const catPaths = {};
+      for (const cat of Object.keys(cats)) {
+        catPaths[cat] = cats[cat].map((u) => map[u]).filter(Boolean);
+      }
+      const result = await window.workManager.archivePage({
+        baseName,
+        html,
+        url: tab.url,
+        title: name,
+        meta: {
+          price: item.info.price,
+          params: item.info.params,
+          skus: item.info.skus,
+          images: catPaths,
+          imageCount: Object.keys(map).length
+        }
+      });
+      if (!stillExists()) {
+        await window.workManager.deleteArchive(baseName + '.html');
+        return;
+      }
+      if (result?.ok) {
+        updateItem(item.id, { file: result.file, images: Object.keys(map).length, status: 'done' });
+        toast(`建档完成：${name}（图 ${Object.keys(map).length}）`);
+      } else {
+        updateItem(item.id, { status: 'failed' });
+        toast(`建档失败：${name}`);
+      }
+    } catch {
+      updateItem(item.id, { status: 'failed' });
+    }
+  })();
+}
+
+function updateItem(id, patch) {
+  writeSelection(readSelection().map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  renderSelection();
 }
 
 function syncAddress() {
@@ -1187,12 +1265,25 @@ function renderSelection() {
       renderSelection();
     });
 
-    if (item.file) {
-      const chip = document.createElement('span');
+    let chip = null;
+    if (item.status === 'archiving') {
+      chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.cssText = 'background:#E3E1F4;color:#5243C7;flex-shrink:0';
+      chip.textContent = '建档中…';
+    } else if (item.status === 'failed') {
+      chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.cssText = 'background:#F6DAE4;color:#AE3D64;flex-shrink:0';
+      chip.textContent = '建档失败';
+    } else if (item.file) {
+      chip = document.createElement('span');
       chip.className = 'chip';
       chip.style.cssText = 'background:#DBE7C5;color:#536534;flex-shrink:0';
-      chip.textContent = '已建档';
+      chip.textContent = item.images ? `已建档 · ${item.images}图` : '已建档';
       chip.title = item.file;
+    }
+    if (chip) {
       row.append(idx, info, chip, remove);
     } else {
       row.append(idx, info, remove);
