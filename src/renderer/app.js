@@ -812,6 +812,28 @@ function initPaneResize() {
 
 function bindEvents() {
   $('#btn-toggle-sidebar').addEventListener('click', () => setSidebarOpen(!state.sidebarOpen));
+  $('#btn-start-selection').addEventListener('click', startSelection);
+  $('#sel-exit').addEventListener('click', exitSelection);
+  $('#sel-add-current').addEventListener('click', () => {
+    const tab = activeTab();
+    if (!tab?.url) {
+      toast('浏览器还没有打开页面');
+      return;
+    }
+    const items = readSelection();
+    if (items.some((i) => i.url === tab.url)) {
+      toast('该页面已在清单中');
+      return;
+    }
+    items.unshift({ id: Date.now(), title: tabTitle(tab), url: tab.url, addedAt: Date.now() });
+    writeSelection(items);
+    renderSelection();
+    toast('已加入选品清单');
+  });
+  $('#sel-clear').addEventListener('click', () => {
+    writeSelection([]);
+    renderSelection();
+  });
   $('#btn-toggle-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
   $('#sb-browser').addEventListener('click', () => setPaneOpen(!state.paneOpen));
   $('#sb-workbench').addEventListener('click', () => setPaneOpen(false));
@@ -980,6 +1002,97 @@ function bindEvents() {
       }
     } catch { /* guest 未就绪 */ }
   }, 500);
+}
+
+/* ---------- 选品模式：清单(1) + 浏览器(2) ---------- */
+
+const SELECTION_KEY = 'selection.items';
+const SELECTION_HOME = 'https://www.taobao.com';
+let selectionPriorPane = false;
+
+function readSelection() {
+  try {
+    const items = JSON.parse(localStorage.getItem(SELECTION_KEY));
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSelection(items) {
+  try { localStorage.setItem(SELECTION_KEY, JSON.stringify(items.slice(0, 50))); } catch { /* 存储满 */ }
+}
+
+function renderSelection() {
+  const items = readSelection();
+  $('#sel-count').textContent = items.length;
+  const list = $('#sel-list');
+  list.textContent = '';
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'sel-empty';
+    empty.innerHTML = '清单还是空的<br />在右侧浏览器打开候选商品页，点「加入当前页面」收进来';
+    list.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'sel-item';
+
+    const idx = document.createElement('span');
+    idx.className = 'sel-idx';
+    idx.textContent = index + 1;
+
+    const info = document.createElement('div');
+    info.className = 'sel-info';
+    const title = document.createElement('div');
+    title.className = 'sel-item-title';
+    title.textContent = item.title || hostOf(item.url);
+    title.title = item.title || item.url;
+    const url = document.createElement('div');
+    url.className = 'sel-item-url';
+    url.textContent = item.url;
+    info.append(title, url);
+
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.style.cssText = 'background:#E3E1F4;color:#5243C7';
+    chip.textContent = '待建档';
+
+    const remove = document.createElement('button');
+    remove.className = 'sel-remove';
+    remove.title = '移除';
+    remove.innerHTML = '<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    remove.addEventListener('click', () => {
+      writeSelection(readSelection().filter((i) => i.id !== item.id));
+      renderSelection();
+    });
+
+    row.append(idx, info, chip, remove);
+    list.appendChild(row);
+  });
+}
+
+function startSelection() {
+  selectionPriorPane = state.paneOpen;
+  $('#workbench').classList.add('selecting');
+  $('#browser-pane').classList.add('selecting');
+  setPaneOpen(true);
+  const tab = activeTab();
+  if (tab && !tab.url) {
+    $('#view-' + tab.id).loadURL(SELECTION_HOME);
+  } else {
+    createTab(SELECTION_HOME);
+  }
+  renderSelection();
+}
+
+function exitSelection() {
+  $('#workbench').classList.remove('selecting');
+  $('#browser-pane').classList.remove('selecting');
+  if (!selectionPriorPane) setPaneOpen(false);
 }
 
 /* ---------- 启动 ---------- */

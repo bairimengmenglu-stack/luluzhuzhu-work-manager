@@ -91,9 +91,12 @@
                 <div class="hero-title">早上好，业务员 👋</div>
                 <div class="hero-sub">产品库共 <b>128</b> 款建档产品，还有 <b>12</b> 款选品待建档入库。</div>
               </div>
-              <button class="hero-btn">进入产品管理
-                <svg class="ic" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-              </button>
+              <div class="hero-actions">
+                <button class="hero-btn ghost" id="btn-start-selection">开始选品</button>
+                <button class="hero-btn">进入产品管理
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+              </div>
             </div>
 
             <!-- 统计卡 -->
@@ -215,6 +218,23 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- 选品模式：左清单(1) + 右浏览器(2) -->
+          <div id="selection-panel" class="hidden">
+            <div class="sel-head">
+              <div class="sel-title">
+                选品清单
+                <span class="chip" id="sel-count" style="background:#E3E1F4;color:#5243C7">0</span>
+              </div>
+              <div class="sel-actions">
+                <button class="mini-btn" id="sel-add-current">加入当前页面</button>
+                <button class="mini-btn" id="sel-clear">清空</button>
+                <button class="mini-btn sel-exit" id="sel-exit">退出选品</button>
+              </div>
+            </div>
+            <div class="sel-hint">右侧浏览器已打开淘宝 —— 浏览候选商品时点「加入当前页面」，把页面收进清单，供后续建档使用</div>
+            <div id="sel-list"></div>
           </div>
         </section>
 
