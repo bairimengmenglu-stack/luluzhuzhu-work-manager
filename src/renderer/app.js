@@ -434,25 +434,76 @@ const PRODUCT_DATA_SCRIPT = `(() => {
   };
 
   if (isItemPage) {
-    // Fatkun 淘宝/天猫站点规则（加 i 标志，类名大小写不敏感），通用遍历兜底补漏
+    // Fatkun 淘宝/天猫站点规则（加 i 标志，类名大小写不敏感）
     const collect = (sel, cat) => {
       for (const img of document.querySelectorAll(sel)) {
         for (const u of urlsOf(img)) push(cat, u, true);
       }
     };
     collect('[class*="picgallery" i] img', 'main');
-    collect('[class*="skuitem" i] img, [class*="skucontent" i] img, [class*="sku" i] img', 'sku');
     collect('.desc-root img, [class*="descroot" i] img', 'detail');
-    for (const img of document.querySelectorAll('img')) {
-      const urls = urlsOf(img);
-      if (!urls.length) continue;
-      const anc = ancestorText(img);
-      if (/sku|variant|prop|color/i.test(anc) && !cats.sku.length) {
-        for (const u of urls) push('sku', u, true);
-        continue;
+
+    // 淘宝/天猫内嵌 skuBase.props[].values[].img = 商品规格大图（页面悬停大图模式的数据源），
+    // 优先级最高；没有再用 DOM 色块选择器兜底
+    const findKey = (o, k, d) => {
+      if (d > 8 || !o || typeof o !== 'object') return null;
+      if (o[k] !== undefined) return o[k];
+      for (const kk of Object.keys(o)) {
+        const r = findKey(o[kk], k, d + 1);
+        if (r) return r;
       }
-      if (/gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) && !cats.main.length) {
-        for (const u of urls) push('main', u, true);
+      return null;
+    };
+    const balanceEnd = (t, start) => {
+      let depth = 0, inStr = false, q = '';
+      for (let i = start; i < t.length; i++) {
+        const c = t[i];
+        if (inStr) { if (c === '\\\\') { i++; continue; } if (c === q) inStr = false; continue; }
+        if (c === '"' || c === "'") { inStr = true; q = c; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return i; }
+      }
+      return -1;
+    };
+    let skuBase = null;
+    for (const s of document.querySelectorAll('script')) {
+      const t = s.textContent || '';
+      if (t.length < 1000 || !t.includes('skuBase')) continue;
+      const starts = [t.indexOf('{')];
+      const kb = t.indexOf('skuBase');
+      if (kb > -1) starts.push(t.lastIndexOf('{', kb));
+      const ki = t.indexOf('sku2info');
+      if (ki > -1) starts.push(t.lastIndexOf('{', ki));
+      for (const start of [...new Set(starts)]) {
+        if (start === -1) continue;
+        const end = balanceEnd(t, start);
+        if (end === -1) continue;
+        try {
+          const obj = JSON.parse(t.slice(start, end));
+          const base = findKey(obj, 'skuBase', 0);
+          if (base && Array.isArray(base.props)) { skuBase = base; break; }
+        } catch { /* 平衡片段不是合法 JSON */ }
+      }
+      if (skuBase) break;
+    }
+    if (skuBase) {
+      for (const prop of skuBase.props || []) {
+        for (const v of prop.values || []) {
+          const u = abs(v.img || v.image || '');
+          if (u) push('sku', u, true);
+        }
+      }
+    }
+    if (!cats.sku.length) {
+      collect('[class*="skuitem" i] img, [class*="skucontent" i] img, [class*="sku" i] img', 'sku');
+    }
+    if (!cats.main.length) {
+      for (const img of document.querySelectorAll('img')) {
+        const urls = urlsOf(img);
+        if (!urls.length) continue;
+        if (/gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(ancestorText(img))) {
+          for (const u of urls) push('main', u, true);
+        }
       }
     }
   } else {
@@ -1471,8 +1522,19 @@ function startSelection() {
     pane.style.width = '';
     pane.style.flex = '';
   }
-  // 已有淘宝/天猫标签就直接复用，不再重复开新标签
-  const existing = state.tabs.find((t) => isTaobaoUrl(t.url));
+  // 已有淘宝/天猫标签就直接复用：商品详情页优先 → 当前激活的 → 任意淘宝系
+  const ITEM_PAGE = /(?:tmall|liangxinyao)\.(?:com|hk)|item\.taobao\.com/i;
+  const active = activeTab();
+  let existing = null;
+  if (active && ITEM_PAGE.test(active.url)) {
+    existing = active;
+  } else {
+    const famTabs = state.tabs.filter((t) => isTaobaoUrl(t.url));
+    existing = famTabs.find((t) => ITEM_PAGE.test(t.url))
+      || (active && isTaobaoUrl(active.url) ? active : null)
+      || famTabs[0]
+      || null;
+  }
   if (existing) {
     activateTab(existing.id);
   } else {
