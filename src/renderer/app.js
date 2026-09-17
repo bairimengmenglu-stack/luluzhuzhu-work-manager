@@ -1313,8 +1313,9 @@ function renderSelection() {
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'sel-empty';
-    empty.innerHTML = '清单还是空的<br />在右侧浏览器打开候选商品页，点「加入当前页面」收进来';
+    empty.innerHTML = '清单还是空的<br />在右侧浏览器打开候选商品页，点地址栏右侧 ☆ 收进清单';
     list.appendChild(empty);
+    updateBookmarkState();
     return;
   }
 
@@ -1422,6 +1423,8 @@ function renderSelection() {
       list.appendChild(wrap);
     }
   });
+  // 与浏览器星标保持同步：清单删除/清空后当前页若已不在清单，星标回退空心
+  updateBookmarkState();
 }
 
 // 进入选品直接展开清单；需要腾地方时可用「收起」折成左侧竖条
