@@ -238,9 +238,9 @@ ipcMain.handle('browser:archive-images', async (_event, payload) => {
     }
     const dir = path.join(ARCHIVE_DIR, `${baseName}_files`);
     await fsPromises.mkdir(dir, { recursive: true });
-    // 条目为 {url, hd}：hd 为渲染层按 Fatkun alicdn 规则生成的高清链，优先下载
+    // 条目为 {url, hd}：hd 为渲染层按 Fatkun alicdn 规则生成的高清链，优先下载，失败回退原图
     const cats = {};
-    for (const cat of ['video', 'sku', 'main', 'detail', 'other']) {
+    for (const cat of ['sku', 'main', 'detail']) {
       if (Array.isArray(categorized[cat])) {
         cats[cat] = categorized[cat]
           .filter((e) => e && typeof e.url === 'string' && /^https?:\/\//i.test(e.url))
@@ -252,32 +252,53 @@ ipcMain.handle('browser:archive-images', async (_event, payload) => {
     const queue = [];
     for (const cat of Object.keys(cats)) {
       for (const entry of cats[cat]) {
-        queue.push({ cat, url: entry.url, target: entry.hd && /^https?:\/\//i.test(entry.hd) ? entry.hd : entry.url });
+        const targets = entry.hd && /^https?:\/\//i.test(entry.hd) && entry.hd !== entry.url
+          ? [entry.hd, entry.url]
+          : [entry.url];
+        queue.push({ cat, url: entry.url, targets });
       }
     }
     const counters = {};
-    const isVideo = (u) => /\.(mp4|m4v|mov|webm)(\?|$)/i.test(u);
     const worker = async () => {
       while (queue.length) {
-        const { cat, url, target } = queue.shift();
+        const { cat, url, targets } = queue.shift();
         try {
-          const video = isVideo(target);
-          if (/\.m3u8(\?|$)/i.test(target)) continue; // HLS 流无法单文件保存
-          const res = await net.fetch(target, {
-            session: session.fromPartition(BROWSER_PARTITION),
-            useSessionCookies: true,
-            signal: AbortSignal.timeout(video ? 60000 : 15000),
-            redirect: 'follow'
-          });
-          // 注意：net.fetch 不能手动注入 referer 头（ERR_BLOCKED_BY_CLIENT），共享 session 自带缓存与 Cookie
-          if (!res.ok) { if (failed.length < 5) failed.push(`${res.status} ${url.slice(0, 60)}`); continue; }
-          const buf = Buffer.from(await res.arrayBuffer());
-          // 小图过滤仅用于 detail/other（排除图标占位图）；SKU 色块与主图缩略本身是小图，需豁免
-          if (!video && (cat === 'detail' || cat === 'other') && buf.length < 2048) continue;
-          const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+          let buf = null;
+          let mime = '';
+          // SKU 需要可用大图：逐候选下载，sku 要求 ≥3KB（过滤坏图/占位图），全部失败再用原图
+          for (const target of targets) {
+            const candidates = cat === 'sku'
+              ? [target, url.replace(/\.(png|jpg|jpeg|webp)(\?|$)/i, '_400x400.jpg$2'), url]
+              : [target];
+            let saved = false;
+            for (const candidate of [...new Set(candidates)]) {
+              if (!/^https?:\/\//i.test(candidate)) continue;
+              try {
+                const res = await net.fetch(candidate, {
+                  session: session.fromPartition(BROWSER_PARTITION),
+                  useSessionCookies: true,
+                  signal: AbortSignal.timeout(15000),
+                  redirect: 'follow'
+                });
+                if (!res.ok) { if (failed.length < 5) failed.push(`${res.status} ${candidate.slice(0, 60)}`); continue; }
+                const b = Buffer.from(await res.arrayBuffer());
+                // detail ≥2KB；主图/SKU ≥3KB（过滤坏图、1x1 占位图与图标）
+                const min = cat === 'detail' ? 2048 : 3072;
+                if (b.length < min) continue;
+                buf = b;
+                mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+                saved = true;
+                break;
+              } catch (err) {
+                if (failed.length < 5) failed.push(`${err?.message || err} ${candidate.slice(0, 60)}`);
+              }
+            }
+            if (saved) break;
+          }
+          if (!buf) continue;
           let ext = EXT_BY_MIME[mime]
             || (path.extname(new URL(url).pathname).match(/^(\.\w{1,5})$/) ? RegExp.$1 : '');
-          if (!ext) ext = video ? '.mp4' : mime.startsWith('video/') ? '.mp4' : '.img';
+          if (!ext) ext = '.img';
           counters[cat] = (counters[cat] || 0) + 1;
           const fname = `${cat}_${counters[cat]}${ext}`;
           await fsPromises.writeFile(path.join(dir, fname), buf);

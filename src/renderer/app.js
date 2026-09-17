@@ -398,7 +398,7 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     for (const [re, rep] of HD_RULES) out = out.replace(re, rep);
     return out;
   };
-  const cats = { video: [], sku: [], main: [], detail: [], other: [] };
+  const cats = { main: [], sku: [], detail: [] };
   const seen = new Set();
   const push = (cat, u, withHd) => {
     if (!u || seen.has(u)) return;
@@ -433,11 +433,6 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     return s.toLowerCase();
   };
 
-  for (const v of document.querySelectorAll('video')) {
-    push('video', abs(v.currentSrc || v.src || (v.querySelector('source') && v.querySelector('source').src)), false);
-    push('video', abs(v.poster), false);
-  }
-
   if (isItemPage) {
     // Fatkun 淘宝/天猫站点规则（加 i 标志，类名大小写不敏感），通用遍历兜底补漏
     const collect = (sel, cat) => {
@@ -458,14 +453,10 @@ const PRODUCT_DATA_SCRIPT = `(() => {
       }
       if (/gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) && !cats.main.length) {
         for (const u of urls) push('main', u, true);
-        continue;
-      }
-      if (bigEnough(img)) {
-        for (const u of urls) push('other', u, true);
       }
     }
   } else {
-    // 通用启发式：容器类名判断主图/SKU，其余按尺寸过滤
+    // 通用启发式：容器类名判断主图/SKU，其余按尺寸过滤进详情
     for (const img of document.querySelectorAll('img')) {
       const urls = urlsOf(img);
       if (!urls.length) continue;
@@ -1383,9 +1374,9 @@ function renderSelection() {
     if (state.expandedSelId === item.id) {
       const wrap = document.createElement('div');
       wrap.className = 'sel-grid-wrap';
-      const catLabels = { main: '主图', sku: 'SKU', detail: '详情', video: '视频', other: '其他' };
+      const catLabels = { main: '主图', sku: 'SKU', detail: '详情' };
       let any = false;
-      for (const cat of ['main', 'sku', 'detail', 'video', 'other']) {
+      for (const cat of ['main', 'sku', 'detail']) {
         const files = (item.filesByCat && item.filesByCat[cat]) || [];
         if (!files.length) continue;
         any = true;
@@ -1396,14 +1387,6 @@ function renderSelection() {
         const cells = document.createElement('div');
         cells.className = 'sel-grid';
         for (const rel of files) {
-          if (cat === 'video' || /\.(mp4|webm|mov)$/i.test(rel)) {
-            const v = document.createElement('video');
-            v.className = 'sel-grid-media';
-            v.src = fileUrl(rel);
-            v.controls = true;
-            cells.appendChild(v);
-            continue;
-          }
           const img = document.createElement('img');
           img.className = 'sel-grid-thumb';
           img.src = fileUrl(rel);
