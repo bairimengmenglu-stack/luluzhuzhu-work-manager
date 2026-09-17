@@ -116,13 +116,16 @@ function createView(tab) {
   const wrap = document.createElement('div');
   wrap.className = 'view-wrap';
   wrap.id = 'wrap-' + tab.id;
+  const stage = document.createElement('div');
+  stage.className = 'vp-stage';
   const view = document.createElement('webview');
   view.id = 'view-' + tab.id;
   // ZCode 同款持久化会话分区：Cookie/登录态在重启后保留，代理跟随系统
   view.setAttribute('partition', 'persist:embedded-browser');
   view.src = tab.url || 'about:blank';
   view.setAttribute('allowpopups', '');
-  wrap.appendChild(view);
+  stage.appendChild(view);
+  wrap.appendChild(stage);
   $('#views').appendChild(wrap);
   wireView(tab, view);
 }
@@ -211,6 +214,8 @@ function wireView(tab, view) {
 
 /* ---------- 标签条 ---------- */
 
+let dragTabId = null;
+
 function renderStrip() {
   const strip = $('#tab-strip');
   strip.textContent = '';
@@ -256,10 +261,40 @@ function renderStrip() {
       e.preventDefault();
       openTabContextMenu(e, tab);
     });
+
+    // ZCode 标签可拖拽排序（dnd-kit），这里用 HTML5 DnD 实现同效果
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => {
+      dragTabId = tab.id;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(tab.id)); } catch { /* IE 兼容无需 */ }
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      dragTabId = null;
+    });
+    el.addEventListener('dragover', (e) => {
+      if (dragTabId == null || dragTabId === tab.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const from = state.tabs.findIndex((t) => t.id === dragTabId);
+      const to = state.tabs.findIndex((t) => t.id === tab.id);
+      if (from < 0 || to < 0) return;
+      const rect = el.getBoundingClientRect();
+      let target = e.clientX > rect.left + rect.width / 2 ? to + 1 : to;
+      if (from < target) target -= 1;
+      if (target !== from) {
+        const [moved] = state.tabs.splice(from, 1);
+        state.tabs.splice(target, 0, moved);
+        renderStrip();
+      }
+    });
     strip.appendChild(el);
   }
   const active = strip.querySelector('.browser-tab.active');
   if (active) active.scrollIntoView({ inline: 'nearest' });
+  saveSession();
 }
 
 /* ---------- 工具栏同步 ---------- */
@@ -281,6 +316,8 @@ function syncAddress() {
   if (document.activeElement === input) return;
   const tab = activeTab();
   input.value = tab ? tab.url : '';
+  // https 页面显示锁形图标（ZCode 地址栏同款）
+  $('#address-lock').classList.toggle('hidden', !tab || !tab.url || !/^https:/i.test(tab.url));
 }
 
 function renderError(tab) {
@@ -524,8 +561,31 @@ function setPicking(on) {
 
 const VIEWPORT_KEY = 'browser.viewport';
 const INSECURE_KEY = 'browser.allowInsecureCerts';
+const SESSION_KEY = 'browser.session';
 // 视口尺寸范围（browser.responsive.dimensionRangeError）
 const VP_RANGE = { width: { min: 200, max: 4096 }, height: { min: 200, max: 4320 } };
+
+// ZCode 会话恢复：把打开的标签（URL+标题）持久化，重启后还原
+let sessionSaveTimer = null;
+
+function saveSession() {
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => {
+    const tabs = state.tabs.filter((t) => t.url).slice(0, 20)
+      .map((t) => ({ url: t.url, title: t.title }));
+    const active = Math.max(0, state.tabs.findIndex((t) => t.id === state.activeTabId));
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ tabs, active })); } catch { /* 存储满 */ }
+  }, 400);
+}
+
+function readSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY));
+    return saved && Array.isArray(saved.tabs) ? saved : null;
+  } catch {
+    return null;
+  }
+}
 
 function loadViewport() {
   try {
@@ -579,24 +639,65 @@ function applyPreviewZoom(view, viewportWidth) {
   try { view.setZoomFactor(z); } catch { /* guest 未就绪 */ }
 }
 
+// ZCode browser.responsive.resizeWidth/resizeHeight：视口边缘可拖拽改尺寸
+function attachViewportHandles(stage) {
+  for (const dir of ['x', 'y']) {
+    if (stage.querySelector('.vp-handle-' + dir)) continue;
+    const handle = document.createElement('div');
+    handle.className = 'vp-handle vp-handle-' + dir;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      const startW = stage.offsetWidth;
+      const startH = stage.offsetHeight;
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const onMove = (ev) => {
+        if (dir === 'x') {
+          const w = startW + (ev.clientX - sx);
+          if (inRange('width', w)) {
+            stage.style.width = w + 'px';
+            $('#resp-width').value = w;
+          }
+        } else {
+          const h = startH + (ev.clientY - sy);
+          if (inRange('height', h)) {
+            stage.style.height = h + 'px';
+            $('#resp-height').value = h;
+          }
+        }
+      };
+      const onUp = () => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        saveViewport();
+        applyPreviewZoom(stage.querySelector('webview'), stage.offsetWidth);
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+    });
+    stage.appendChild(handle);
+  }
+}
+
 function applyResponsive() {
   if (state.responsive) saveViewport();
   const dims = readViewportInput() || { width: 375, height: 667 };
   for (const tab of state.tabs) {
     const wrap = $('#wrap-' + tab.id);
     if (!wrap) continue;
-    const view = wrap.querySelector('webview');
+    const stage = wrap.querySelector('.vp-stage');
+    const view = stage.querySelector('webview');
     if (state.responsive && tab.id === state.activeTabId) {
       wrap.classList.add('responsive');
-      view.style.flex = 'none';
-      view.style.width = dims.width + 'px';
-      view.style.height = dims.height + 'px';
+      stage.style.width = dims.width + 'px';
+      stage.style.height = dims.height + 'px';
+      attachViewportHandles(stage);
       applyPreviewZoom(view, dims.width);
     } else {
       wrap.classList.remove('responsive');
-      view.style.flex = '';
-      view.style.width = '';
-      view.style.height = '';
+      stage.style.width = '';
+      stage.style.height = '';
       try { view.setZoomFactor(1); } catch { /* guest 未就绪 */ }
     }
   }
@@ -617,7 +718,20 @@ function setPaneOpen(open) {
   $('#btn-toggle-browser').setAttribute('aria-pressed', String(open));
   $('#sb-browser').classList.toggle('active', open);
   if (open) {
-    if (!state.tabs.length) createTab('');
+    if (!state.tabs.length) {
+      // 会话恢复：还原上次打开的标签
+      const saved = readSession();
+      if (saved && saved.tabs.length) {
+        for (const t of saved.tabs.slice(0, 20)) {
+          const tab = createTab(t.url);
+          tab.title = t.title || '';
+        }
+        const activeIdx = Math.min(saved.active || 0, state.tabs.length - 1);
+        activateTab(state.tabs[activeIdx].id);
+      } else {
+        createTab('');
+      }
+    }
     renderViews();
     syncToolbar();
   }

@@ -7,6 +7,8 @@ Menu.setApplicationMenu(null);
 const SUPPORTED_URL = /^(https?|file|about|data):/i;
 // ZCode 内嵌浏览器持久化分区（本地命名对齐应用）
 const BROWSER_PARTITION = 'persist:embedded-browser';
+// ZCode 同款：guest 页 alert/confirm 品牌化对话框的预加载脚本
+const GUEST_DIALOG_PRELOAD = path.join(__dirname, '..', 'preload', 'guest-dialogs.cjs');
 let allowInsecureCerts = false;
 
 // ZCode clearEmbeddedBrowserData：cache 模式保留 Cookie/登录态，all 模式全清
@@ -39,6 +41,47 @@ ipcMain.handle('browser:confirm-clear-all', async (event) => {
   });
   return result.response === 0;
 });
+
+// ZCode EmbeddedBrowserJavaScriptDialog：guest 页 alert/confirm 同步换宿主品牌化对话框
+ipcMain.on('guest-dialog', (event, payload) => {
+  event.returnValue = handleGuestDialog(event, payload);
+});
+
+function handleGuestDialog(event, payload) {
+  try {
+    if (typeof payload !== 'object' || payload === null) return { handled: false };
+    const { type, message } = payload;
+    if ((type !== 'alert' && type !== 'confirm') || typeof message !== 'string') return { handled: false };
+    if (event.sender.getType() !== 'webview') return { handled: false };
+
+    // ZCode resolveEmbeddedBrowserDialogSource：`<host> says`
+    let source = 'This page says';
+    for (const candidate of [event.senderFrame?.url ?? '', event.sender.getURL()]) {
+      if (!candidate) continue;
+      try {
+        const u = new URL(candidate);
+        if ((u.protocol === 'http:' || u.protocol === 'https:') && u.host) {
+          source = `${u.host} says`;
+          break;
+        }
+      } catch { /* 非 URL 候选 */ }
+    }
+
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const choice = dialog.showMessageBoxSync(win, {
+      type: type === 'alert' ? 'info' : 'question',
+      buttons: type === 'alert' ? ['确定'] : ['取消', '确定'],
+      defaultId: type === 'alert' ? 0 : 1,
+      cancelId: 0,
+      message: source,
+      detail: message,
+      noLink: true
+    });
+    return { handled: true, ...(type === 'confirm' ? { value: choice === 1 } : {}) };
+  } catch {
+    return { handled: false };
+  }
+}
 
 // ZCode embeddedBrowserAllowInsecureCertificates：仅对内置浏览器分区生效
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
@@ -114,14 +157,14 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // 对齐 ZCode will-attach-webview：加固 guest 配置并在挂载时校验 URL
+  // 对齐 ZCode will-attach-webview：加固 guest 配置、注入对话框预加载并校验 URL
   win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
     webPreferences.contextIsolation = true;
     webPreferences.nodeIntegration = false;
     webPreferences.sandbox = true;
-    delete params.preload;
-    delete params.nodeintegration;
+    webPreferences.preload = GUEST_DIALOG_PRELOAD;
     params.nodeintegrationinsubframes = 'true';
+    delete params.nodeintegration;
     delete params.disablewebsecurity;
     params.allowpopups = 'true';
 
