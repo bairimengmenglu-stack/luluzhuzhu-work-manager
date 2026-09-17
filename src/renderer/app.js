@@ -373,27 +373,22 @@ function syncToolbar() {
 // 主图 [class*=picGallery] li img · SKU [class*=SkuContent] [class*=skuItem] img
 // 详情 .desc-root img · 视频 video；其余走通用启发式并按 naturalWidth 过滤垃圾图
 const PRODUCT_DATA_SCRIPT = `(() => {
-  const abs = (u) => {
-    try {
-      const x = new URL(u, location.href);
-      return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null;
-    } catch { return null; }
-  };
+  const abs = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null; } catch { return null; } };
   const HD_RULES = [
-    [/_\\.webp/i, ''],
-    [/\\.png_\\d+x\\d+\\.png$/i, '.png'],
-    [/_(\\d+)x(\\d+)\\.jpg$/i, '_800x800.jpg'],
-    [/_(\\d+)x(\\d+)[qQ](\\d+)\\.jpg.*/i, ''],
-    [/_640x0q80_\\.webp/i, ''],
+    [/_\\\\.webp/i, ''],
+    [/\\\\.png_\\\\d+x\\\\d+\\\\.png$/i, '.png'],
+    [/_(\\\\d+)x(\\\\d+)\\\\.jpg$/i, '_800x800.jpg'],
+    [/_(\\\\d+)x(\\\\d+)[qQ]\\\\d+\\\\.jpg.*/i, ''],
+    [/_640x0q80_\\\\.webp/i, ''],
     [/_640x0q80$/i, ''],
-    [/_(\\d+)x(\\d+).*/i, ''],
-    [/-tps-\\d+-\\d+/i, ''],
-    [/\\.(\\d+)x(\\d+)\\./, '.'],
-    [/\\.jpg.*/i, '.jpg'],
-    [/\\.png.*/i, '.png']
+    [/_(\\\\d+)x\\\\d+.*/i, ''],
+    [/-tps-\\\\d+-\\\\d+/i, ''],
+    [/\\\\.\\\\d+x\\\\d+\\\\./, '.'],
+    [/\\\\.jpg.*/i, '.jpg'],
+    [/\\\\.png.*/i, '.png']
   ];
   const hd = (u) => {
-    if (!u || !/alicdn\\.com/i.test(u)) return u;
+    if (!u || !/alicdn\\\\.com/i.test(u)) return u;
     let out = u;
     for (const [re, rep] of HD_RULES) out = out.replace(re, rep);
     return out;
@@ -408,13 +403,15 @@ const PRODUCT_DATA_SCRIPT = `(() => {
   const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
   const urlsOf = (img) => {
     const urls = [];
+    const cur = abs(img.currentSrc);
+    if (cur) urls.push(cur);
     for (const a of LAZY) {
       const u = abs(img.getAttribute(a));
       if (u) urls.push(u);
     }
     if (img.srcset) {
       for (const part of img.srcset.split(',')) {
-        const u = abs(part.trim().split(/\\s+/)[0]);
+        const u = abs(part.trim().split(/\\\\s+/)[0]);
         if (u) urls.push(u);
       }
     }
@@ -424,7 +421,7 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     const w = img.naturalWidth || 0, h = img.naturalHeight || 0;
     return w === 0 || h === 0 || (w >= 100 && h >= 100);
   };
-  const isItemPage = /(?:tmall|liangxinyao)\\.(?:com|hk)|item\\.taobao\\.com/i.test(location.href);
+  const isItemPage = /(?:tmall|liangxinyao)\\\\.(?:com|hk)|item\\\\.taobao\\\\.com/i.test(location.href);
   const ancestorText = (el) => {
     let s = '', n = el;
     for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
@@ -432,9 +429,11 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     }
     return s.toLowerCase();
   };
-
+  for (const v of document.querySelectorAll('video')) {
+    push('video', abs(v.currentSrc || v.src || (v.querySelector('source') && v.querySelector('source').src)), false);
+    push('video', abs(v.poster), false);
+  }
   if (isItemPage) {
-    // Fatkun 淘宝/天猫站点规则（加 i 标志，类名大小写不敏感）
     const collect = (sel, cat) => {
       for (const img of document.querySelectorAll(sel)) {
         for (const u of urlsOf(img)) push(cat, u, true);
@@ -442,39 +441,13 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     };
     collect('[class*="picgallery" i] img', 'main');
     collect('.desc-root img, [class*="descroot" i] img', 'detail');
-
-    // 淘宝/天猫内嵌 skuBase.props[].values[].img = 商品规格大图（页面悬停大图模式的数据源），
-    // 优先级最高；没有再用 DOM 色块选择器兜底
-    const findKey = (o, k, d) => {
-      if (d > 8 || !o || typeof o !== 'object') return null;
-      if (o[k] !== undefined) return o[k];
-      for (const kk of Object.keys(o)) {
-        const r = findKey(o[kk], k, d + 1);
-        if (r) return r;
-      }
-      return null;
-    };
-    const balanceEnd = (t, start) => {
-      let depth = 0, inStr = false, q = '';
-      for (let i = start; i < t.length; i++) {
-        const c = t[i];
-        if (inStr) { if (c === '\\\\') { i++; continue; } if (c === q) inStr = false; continue; }
-        if (c === '"' || c === "'" || c === '\\u0060') { inStr = true; q = c; continue; }
-        if (c === '{') depth++;
-        else if (c === '}') { depth--; if (depth === 0) return i; }
-      }
-      return -1;
-    };
-    let skuBase = null;
+    // 淘宝/天猫内嵌 skuBase.properties.values[].image|hoverImage = 商品规格大图（大图模式数据源）
     const BS = String.fromCharCode(92);
-    const unescapeRe = new RegExp(BS + '\\x28["' + BS + '\\x2Fbfnrt]', 'g');
+    const unescapeRe = new RegExp(BS + '\\\\x28[' + BS + '\\\\x2Fbfnrt])', 'g');
     const attempt = (text) => {
       const starts = [text.indexOf('{')];
       const kb = text.indexOf('skuBase');
-      if (kb > -1) {
-        starts.push(text.lastIndexOf('{', kb));
-        starts.push(text.indexOf('{', kb)); // "skuBase":{ 的对象开括号
-      }
+      if (kb > -1) { starts.push(text.lastIndexOf('{', kb)); starts.push(text.indexOf('{', kb)); }
       const ki = text.indexOf('sku2info');
       if (ki > -1) starts.push(text.lastIndexOf('{', ki));
       const kp = text.indexOf('"props"') === -1 ? text.indexOf('props') : text.indexOf('"props"');
@@ -484,48 +457,51 @@ const PRODUCT_DATA_SCRIPT = `(() => {
         const end = balanceEnd(text, start);
         if (end === -1) continue;
         try {
-          const obj = JSON.parse(text.slice(start, end));
-          // 起始 { 可能正好是 skuBase 对象自身（键为 props/values）
-          let base = Array.isArray(obj.props) ? obj : findKey(obj, 'skuBase', 0);
-          if (base && Array.isArray(base.props)) return base;
-        } catch { /* 平衡片段不是合法 JSON */ }
+          let text2 = text.slice(start, end);
+          let obj;
+          try { obj = JSON.parse(text2); } catch { text2 = text2.replace(unescapeRe, '$1'); obj = JSON.parse(text2); }
+          let base = Array.isArray(obj.properties) ? obj : findKey(obj, 'skuBase', 0);
+          if (base && Array.isArray(base.properties || base.props)) return base;
+        } catch { }
       }
       return null;
     };
+    const balanceEnd = (t, start) => {
+      let depth = 0, inStr = false, q = '';
+      for (let i = start; i < t.length; i++) {
+        const c = t[i];
+        if (inStr) { if (c === BS) { i++; continue; } if (c === q) inStr = false; continue; }
+        if (c === '"' || c === "'" || c === BS + BS) { inStr = true; q = c; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return i; }
+      }
+      return -1;
+    };
+    const findKey = (o, k, d) => {
+      if (d > 8 || !o || typeof o !== 'object') return null;
+      if (o[k] !== undefined) return o[k];
+      for (const kk of Object.keys(o)) {
+        const r = findKey(o[kk], k, d + 1);
+        if (r) return r;
+      }
+      return null;
+    };
+    let skuBase = null;
     for (const s of document.querySelectorAll('script')) {
       const t = s.textContent || '';
       if (t.length < 1000 || !t.includes('skuBase')) continue;
-      // 淘宝/天猫 SSR 数据可能双重编码（转义 JSON 字符串再嵌入），先试原文再试反转义
       skuBase = attempt(t);
       if (!skuBase) skuBase = attempt(t.replace(unescapeRe, '$1'));
       if (skuBase) break;
     }
     if (skuBase) {
+      const props = skuBase.properties || skuBase.props || [];
       // 每个规格值一条，与页面「商品规格」数量一一对应；不参与全局去重
-      //（首个规格的图常与主图第一张相同，语义不同需保留）
-      for (const prop of skuBase.props || []) {
+      for (const prop of props) {
         for (const v of prop.values || []) {
-          const u = abs(v.img || v.image || '');
-          if (u) cats.sku.push({ url: u, hd: hd(u) });
+          const u = abs(v.image || v.img || '');
+          if (u) cats.sku.push({ url: u, hd: hd(u), name: v.name || '' });
         }
-      }
-    }
-    if (!cats.sku.length) {
-      // 容错：script 内嵌的是带 JS 语法的非纯 JSON 时，按正则从 skuBase→sku2info
-      // 片段提取规格大图（该片段内图片 URL 顺序 = 规格值顺序）
-      for (const s of document.querySelectorAll('script')) {
-        const t = s.textContent || '';
-        if (t.length < 1000 || !t.includes('skuBase')) continue;
-        const a = t.indexOf('skuBase');
-        let b = t.indexOf('sku2info', a);
-        if (b === -1) b = Math.min(t.length, a + 60000);
-        const seg = t.slice(a, b).split(String.fromCharCode(92) + '/').join('/');
-        const urls = seg.match(/https?:\/\/[a-z0-9.]*alicdn\.com\/(?:bao\/uploaded|imgextra)\/[^"' ]+?\.(?:jpg|jpeg|png|webp)/gi) || [];
-        for (const u0 of urls) {
-          const u = abs(u0);
-          if (u && !/-tps-\d+-\d+\./i.test(u)) cats.sku.push({ url: u, hd: hd(u) });
-        }
-        if (cats.sku.length) break;
       }
     }
     if (!cats.sku.length) {
@@ -540,8 +516,15 @@ const PRODUCT_DATA_SCRIPT = `(() => {
         }
       }
     }
+    // Fatkun 式通用兜底：页面所有 ≥100px 的图收进详情，保证商品页永不空手而归
+    for (const img of document.querySelectorAll('img')) {
+      const urls = urlsOf(img);
+      if (!urls.length) continue;
+      const w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+      if (w && h && (w < 100 || h < 100)) continue;
+      for (const u of urls) push('detail', u, true);
+    }
   } else {
-    // 通用启发式：容器类名判断主图/SKU，其余按尺寸过滤进详情
     for (const img of document.querySelectorAll('img')) {
       const urls = urlsOf(img);
       if (!urls.length) continue;
