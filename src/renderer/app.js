@@ -1103,7 +1103,7 @@ function renderSelection() {
   });
 }
 
-// 清单默认收起（还没定这块放什么），需要时从左侧竖条展开
+// 进入选品直接展开清单；需要腾地方时可用「收起」折成左侧竖条
 function setSelectionCollapsed(collapsed) {
   $('#selection-panel').classList.toggle('collapsed', collapsed);
 }
@@ -1112,7 +1112,7 @@ function startSelection() {
   selectionPriorPane = state.paneOpen;
   $('#workbench').classList.add('selecting');
   $('#browser-pane').classList.add('selecting');
-  setSelectionCollapsed(true);
+  setSelectionCollapsed(false);
   setPaneOpen(true);
   // 直接新建标签加载淘宝：复用空标签时 webview 可能尚未就绪，loadURL 会静默失败
   createTab(SELECTION_HOME);
