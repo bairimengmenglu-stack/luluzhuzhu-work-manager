@@ -1114,11 +1114,10 @@ function startSelection() {
   $('#browser-pane').classList.add('selecting');
   setSelectionCollapsed(true);
   setPaneOpen(true);
-  const tab = activeTab();
-  if (tab && !tab.url) {
-    $('#view-' + tab.id).loadURL(SELECTION_HOME);
-  } else {
-    createTab(SELECTION_HOME);
+  // 直接新建标签加载淘宝：复用空标签时 webview 可能尚未就绪，loadURL 会静默失败
+  createTab(SELECTION_HOME);
+  for (const t of [...state.tabs]) {
+    if (!t.url) closeTab(t.id);
   }
   renderSelection();
 }
