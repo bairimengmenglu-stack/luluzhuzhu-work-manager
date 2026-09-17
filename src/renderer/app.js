@@ -1133,9 +1133,10 @@ function setSelectionCollapsed(collapsed) {
   $('#selection-panel').classList.toggle('collapsed', collapsed);
 }
 
+// 淘宝系域名（taobao.com 及 tmall.com 全部子域，如 detail.tmall.com）
 function isTaobaoUrl(url) {
   try {
-    return /(^|\.)taobao\.com$/i.test(new URL(url).hostname);
+    return /(^|\.)(taobao|tmall)\.com$/i.test(new URL(url).hostname);
   } catch {
     return false;
   }
