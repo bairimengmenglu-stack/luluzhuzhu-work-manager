@@ -1702,7 +1702,7 @@ function renderLightbox() {
   if (!lb) return;
   const cur = lb.files[lb.index];
   $('#lightbox-img').src = fileUrl(cur.rel);
-  $('#lightbox-counter').textContent = `${lb.index + 1} / ${lb.files.length}`;
+  $('#lb-counter').textContent = `${lb.index + 1} / ${lb.files.length}`;
   $('#lb-prev').disabled = lb.files.length <= 1;
   $('#lb-next').disabled = lb.files.length <= 1;
   $('#lb-del').disabled = false;
