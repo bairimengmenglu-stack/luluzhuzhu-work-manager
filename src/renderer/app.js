@@ -813,6 +813,8 @@ function initPaneResize() {
 function bindEvents() {
   $('#btn-toggle-sidebar').addEventListener('click', () => setSidebarOpen(!state.sidebarOpen));
   $('#btn-start-selection').addEventListener('click', startSelection);
+  $('#sel-rail').addEventListener('click', () => setSelectionCollapsed(false));
+  $('#sel-collapse').addEventListener('click', () => setSelectionCollapsed(true));
   $('#sel-exit').addEventListener('click', exitSelection);
   $('#sel-add-current').addEventListener('click', () => {
     const tab = activeTab();
@@ -1026,6 +1028,8 @@ function writeSelection(items) {
 function renderSelection() {
   const items = readSelection();
   $('#sel-count').textContent = items.length;
+  $('#sel-rail-count').textContent = items.length;
+  $('#sel-rail-count').style.display = items.length ? '' : 'none';
   const list = $('#sel-list');
   list.textContent = '';
 
@@ -1075,10 +1079,16 @@ function renderSelection() {
   });
 }
 
+// 清单默认收起（还没定这块放什么），需要时从左侧竖条展开
+function setSelectionCollapsed(collapsed) {
+  $('#selection-panel').classList.toggle('collapsed', collapsed);
+}
+
 function startSelection() {
   selectionPriorPane = state.paneOpen;
   $('#workbench').classList.add('selecting');
   $('#browser-pane').classList.add('selecting');
+  setSelectionCollapsed(true);
   setPaneOpen(true);
   const tab = activeTab();
   if (tab && !tab.url) {

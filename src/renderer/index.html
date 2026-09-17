@@ -220,21 +220,29 @@
             </div>
           </div>
 
-          <!-- 选品模式：左清单(1) + 右浏览器(2) -->
-          <div id="selection-panel" class="hidden">
-            <div class="sel-head">
-              <div class="sel-title">
-                选品清单
-                <span class="chip" id="sel-count" style="background:#E3E1F4;color:#5243C7">0</span>
-              </div>
-              <div class="sel-actions">
-                <button class="mini-btn" id="sel-add-current">加入当前页面</button>
-                <button class="mini-btn" id="sel-clear">清空</button>
-                <button class="mini-btn sel-exit" id="sel-exit">退出选品</button>
-              </div>
+          <!-- 选品模式：左清单(1，可收起，默认收起) + 右浏览器(2) -->
+          <div id="selection-panel" class="hidden collapsed">
+            <div id="sel-rail" title="展开选品清单">
+              <svg class="ic" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              <span class="sel-rail-label">选品清单</span>
+              <span class="sel-rail-count" id="sel-rail-count">0</span>
             </div>
-            <div class="sel-hint">右侧浏览器已打开淘宝 —— 浏览候选商品时点「加入当前页面」，把页面收进清单，供后续建档使用</div>
-            <div id="sel-list"></div>
+            <div id="sel-main">
+              <div class="sel-head">
+                <div class="sel-title">
+                  选品清单
+                  <span class="chip" id="sel-count" style="background:#E3E1F4;color:#5243C7">0</span>
+                </div>
+                <div class="sel-actions">
+                  <button class="mini-btn" id="sel-add-current">加入当前页面</button>
+                  <button class="mini-btn" id="sel-clear">清空</button>
+                  <button class="mini-btn" id="sel-collapse">收起</button>
+                  <button class="mini-btn sel-exit" id="sel-exit">退出选品</button>
+                </div>
+              </div>
+              <div class="sel-hint">右侧浏览器已打开淘宝 —— 浏览候选商品时点「加入当前页面」，把页面收进清单，供后续建档使用</div>
+              <div id="sel-list"></div>
+            </div>
           </div>
         </section>
 
