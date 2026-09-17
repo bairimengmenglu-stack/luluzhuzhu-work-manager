@@ -872,7 +872,10 @@ function bindEvents() {
   $('#sel-rail').addEventListener('click', () => setSelectionCollapsed(false));
   $('#sel-collapse').addEventListener('click', () => setSelectionCollapsed(true));
   $('#sel-exit').addEventListener('click', exitSelection);
-  $('#sel-clear').addEventListener('click', () => {
+  $('#sel-clear').addEventListener('click', async () => {
+    for (const item of readSelection()) {
+      if (item.file) await window.workManager.deleteArchive(item.file);
+    }
     writeSelection([]);
     renderSelection();
   });
@@ -1105,7 +1108,8 @@ function renderSelection() {
     remove.className = 'sel-remove';
     remove.title = '移除';
     remove.innerHTML = '<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-    remove.addEventListener('click', () => {
+    remove.addEventListener('click', async () => {
+      if (item.file) await window.workManager.deleteArchive(item.file);
       writeSelection(readSelection().filter((i) => i.id !== item.id));
       renderSelection();
     });

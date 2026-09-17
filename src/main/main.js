@@ -245,6 +245,20 @@ ipcMain.handle('browser:archive-page', async (_event, payload) => {
   }
 });
 
+// 删除选品条目时同步删除建档文件（仅限 ARCHIVE_DIR 内，防路径穿越）
+ipcMain.handle('browser:delete-archive', async (_event, file) => {
+  try {
+    if (typeof file !== 'string' || !file) return { ok: false };
+    const base = path.basename(file);
+    if (base !== file || file.includes('\\') || file.includes('/')) return { ok: false };
+    await fsPromises.rm(path.join(ARCHIVE_DIR, base), { force: true });
+    await fsPromises.rm(path.join(ARCHIVE_DIR, base.replace(/\.html$/, '.json')), { force: true });
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

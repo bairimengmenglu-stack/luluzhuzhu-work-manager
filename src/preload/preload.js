@@ -17,5 +17,7 @@ contextBridge.exposeInMainWorld('workManager', {
   clearData: (mode) => ipcRenderer.invoke('browser:clear-data', mode),
   confirmClearAll: () => ipcRenderer.invoke('browser:confirm-clear-all'),
   // 选品建档：保存当前页完整 HTML
-  archivePage: (payload) => ipcRenderer.invoke('browser:archive-page', payload)
+  archivePage: (payload) => ipcRenderer.invoke('browser:archive-page', payload),
+  // 删除选品条目时同步删除建档文件
+  deleteArchive: (file) => ipcRenderer.invoke('browser:delete-archive', file)
 });
