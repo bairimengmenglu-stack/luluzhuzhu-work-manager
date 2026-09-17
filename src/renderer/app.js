@@ -371,6 +371,61 @@ const PRODUCT_NAME_SCRIPT = `(() => {
   return '';
 })()`;
 
+// Fatkun 式识图：img src / 常见懒加载属性 / srcset / og:image，绝对化 + 去重，仅 http(s)
+const COLLECT_IMAGES_SCRIPT = `(() => {
+  const out = new Set();
+  const abs = (u) => {
+    try {
+      const x = new URL(u, location.href);
+      return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null;
+    } catch { return null; }
+  };
+  const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
+  for (const img of document.querySelectorAll('img')) {
+    for (const a of LAZY) {
+      const v = img.getAttribute(a);
+      if (v) { const u = abs(v); if (u) out.add(u); }
+    }
+    if (img.srcset) {
+      for (const part of img.srcset.split(',')) {
+        const u = abs(part.trim().split(/\\s+/)[0]);
+        if (u) out.add(u);
+      }
+    }
+  }
+  for (const s of document.querySelectorAll('source[srcset]')) {
+    for (const part of s.srcset.split(',')) {
+      const u = abs(part.trim().split(/\\s+/)[0]);
+      if (u) out.add(u);
+    }
+  }
+  const meta = document.querySelector('meta[property="og:image"]');
+  if (meta && meta.content) { const u = abs(meta.content); if (u) out.add(u); }
+  return Array.from(out).slice(0, 80);
+})()`;
+
+// 图下载完成后：把页内图片链接改写为本地相对路径，再序列化返回
+const REWRITE_IMAGES_FN = `function (map) {
+  const norm = (u) => { try { return new URL(u, location.href).href } catch { return u } };
+  const lookup = {};
+  for (const [url, rel] of Object.entries(map)) lookup[norm(url)] = rel;
+  const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
+  for (const img of document.querySelectorAll('img')) {
+    for (const a of LAZY) {
+      const v = img.getAttribute(a);
+      if (v) { const rel = lookup[norm(v)]; if (rel) img.setAttribute(a, rel); }
+    }
+    if (img.srcset) {
+      img.srcset = img.srcset.split(',').map((part) => {
+        const seg = part.trim().split(/\\s+/);
+        const rel = lookup[norm(seg[0])];
+        return rel ? [rel, seg[1]].filter(Boolean).join(' ') : part.trim();
+      }).join(', ');
+    }
+  }
+  return document.documentElement.outerHTML;
+}`;
+
 function updateBookmarkState() {
   const btn = $('#b-bookmark');
   const tab = activeTab();
@@ -398,21 +453,39 @@ async function bookmarkCurrentPage() {
   } catch { /* 页面未就绪用标题兜底 */ }
   if (!name) name = tabTitle(tab);
 
-  // 选品建档：抓渲染后的完整 HTML 存独立目录
-  let file = '';
+  // 选品建档：识别并批量下载图片 → 改写页内链接 → 保存完整 HTML
+  toast('正在建档：识别并下载图片…');
+  const host = (hostOf(tab.url) || 'page').replace(/^www\./, '').replace(/[^\w.-]/g, '') || 'page';
+  const baseName = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
+  let html = '';
+  let map = {};
   try {
-    const html = await view.executeJavaScript('document.documentElement.outerHTML', false);
-    if (html) {
-      const result = await window.workManager.archivePage({ html, url: tab.url, title: name });
-      if (result?.ok) file = result.file;
+    const images = await view.executeJavaScript(COLLECT_IMAGES_SCRIPT, false);
+    if (Array.isArray(images) && images.length) {
+      const result = await window.workManager.archiveImages({ baseName, referer: tab.url, images });
+      if (result?.ok && result.map && Object.keys(result.map).length) {
+        map = result.map;
+        html = await view.executeJavaScript(`(${REWRITE_IMAGES_FN})(${JSON.stringify(map)})`, false);
+      }
     }
-  } catch { /* 建档失败不阻塞收藏 */ }
+  } catch { /* 图片环节失败则退回纯 HTML */ }
+  if (!html) {
+    try { html = await view.executeJavaScript('document.documentElement.outerHTML', false); } catch { /* 无法获取 */ }
+  }
 
-  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now(), file });
+  let file = '';
+  if (html) {
+    const result = await window.workManager.archivePage({ baseName, html, url: tab.url, title: name });
+    if (result?.ok) file = result.file;
+  }
+
+  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now(), file, images: Object.keys(map).length });
   writeSelection(items);
   renderSelection();
   updateBookmarkState();
-  toast(file ? `已收藏并建档：${name}` : `已收藏（建档失败）：${name}`);
+  toast(file
+    ? `已收藏并建档：${name}（图 ${Object.keys(map).length} 张）`
+    : `已收藏（建档失败）：${name}`);
 }
 
 function syncAddress() {

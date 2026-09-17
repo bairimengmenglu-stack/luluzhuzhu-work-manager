@@ -220,6 +220,58 @@ ipcMain.handle('browser:open-external', (_event, url) => {
 });
 
 // 选品建档：保存渲染后的完整 HTML + 元数据 JSON，返回文件名挂到清单条目
+// 选品建档：保存渲染后的完整 HTML + 元数据 JSON，返回文件名挂到清单条目
+const EXT_BY_MIME = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif',
+  'image/avif': '.avif', 'image/bmp': '.bmp', 'image/svg+xml': '.svg'
+};
+const VALID_BASE = /^[\w.-]+$/;
+
+ipcMain.handle('browser:archive-images', async (_event, payload) => {
+  try {
+    if (typeof payload !== 'object' || payload === null) return { ok: false, map: {} };
+    const { baseName, referer, images } = payload;
+    if (typeof baseName !== 'string' || !VALID_BASE.test(baseName) || !Array.isArray(images)) {
+      return { ok: false, map: {} };
+    }
+    const dir = path.join(ARCHIVE_DIR, `${baseName}_files`);
+    await fsPromises.mkdir(dir, { recursive: true });
+    // Fatkun 式批量下载：并发 4，15s 超时，<2KB 的小图标跳过
+    const queue = [...new Set(images)].filter((u) => /^https?:\/\//i.test(u)).slice(0, 80);
+    const map = {};
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < queue.length) {
+        const url = queue[cursor++];
+        try {
+          const res = await fetch(url, {
+            headers: {
+              'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
+              referer: typeof referer === 'string' && referer ? referer : url,
+              accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+            },
+            signal: AbortSignal.timeout(15000),
+            redirect: 'follow'
+          });
+          if (!res.ok) continue;
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length < 2048) continue;
+          const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+          const ext = EXT_BY_MIME[mime]
+            || (path.extname(new URL(url).pathname).match(/^(\.\w{1,5})$/) ? RegExp.$1 : '.img');
+          const fname = `${Object.keys(map).length + 1}${ext}`;
+          await fsPromises.writeFile(path.join(dir, fname), buf);
+          map[url] = `${baseName}_files/${fname}`;
+        } catch { /* 单图失败跳过，HTML 保留远程链接 */ }
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return { ok: true, map };
+  } catch (err) {
+    return { ok: false, map: {}, error: err?.message || String(err) };
+  }
+});
+
 ipcMain.handle('browser:archive-page', async (_event, payload) => {
   try {
     if (typeof payload !== 'object' || payload === null) return { ok: false, error: 'bad payload' };
@@ -228,11 +280,15 @@ ipcMain.handle('browser:archive-page', async (_event, payload) => {
       return { ok: false, error: 'bad payload' };
     }
     await fsPromises.mkdir(ARCHIVE_DIR, { recursive: true });
-    let host = 'page';
-    try {
-      host = new URL(url).hostname.replace(/^www\./, '').replace(/[^\w.-]/g, '') || 'page';
-    } catch { /* 保底文件名 */ }
-    const name = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
+    // 渲染层可传入共享 baseName（图片目录同名复用），否则本地生成
+    let name = typeof payload.baseName === 'string' && VALID_BASE.test(payload.baseName) ? payload.baseName : '';
+    if (!name) {
+      let host = 'page';
+      try {
+        host = new URL(url).hostname.replace(/^www\./, '').replace(/[^\w.-]/g, '') || 'page';
+      } catch { /* 保底文件名 */ }
+      name = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
+    }
     await fsPromises.writeFile(path.join(ARCHIVE_DIR, `${name}.html`), html, 'utf8');
     await fsPromises.writeFile(
       path.join(ARCHIVE_DIR, `${name}.json`),
@@ -253,6 +309,7 @@ ipcMain.handle('browser:delete-archive', async (_event, file) => {
     if (base !== file || file.includes('\\') || file.includes('/')) return { ok: false };
     await fsPromises.rm(path.join(ARCHIVE_DIR, base), { force: true });
     await fsPromises.rm(path.join(ARCHIVE_DIR, base.replace(/\.html$/, '.json')), { force: true });
+    await fsPromises.rm(path.join(ARCHIVE_DIR, `${base.replace(/\.html$/, '')}_files`), { recursive: true, force: true });
     return { ok: true };
   } catch {
     return { ok: false };
