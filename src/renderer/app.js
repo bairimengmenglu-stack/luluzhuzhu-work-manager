@@ -218,7 +218,7 @@ function wireView(tab, view) {
     if (e.url === 'about:blank') return;
     tab.url = e.url;
     tab.error = null;
-    syncAddress();
+    syncAddress(true);
     syncToolbar();
     renderViews();
     renderStrip();
@@ -227,7 +227,7 @@ function wireView(tab, view) {
   view.addEventListener('did-navigate-in-page', (e) => {
     if (e.url === 'about:blank') return;
     tab.url = e.url;
-    syncAddress();
+    syncAddress(true);
     renderStrip();
   });
 
@@ -639,9 +639,11 @@ function updateItem(id, patch) {
   renderSelection();
 }
 
-function syncAddress() {
+function syncAddress(force) {
   const input = $('#b-address');
-  if (document.activeElement === input) return;
+  // 输入中不打扰；但主框架导航提交时强制刷新（页面跳转地址必须跟手）
+  if (!force && document.activeElement === input) return;
+  if (force && document.activeElement === input) input.blur();
   const tab = activeTab();
   input.value = tab ? tab.url : '';
   // https 页面显示锁形图标（ZCode 地址栏同款）
