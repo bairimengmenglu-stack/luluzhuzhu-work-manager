@@ -391,16 +391,28 @@ async function bookmarkCurrentPage() {
     toast('该页面已在选品清单中');
     return;
   }
+  const view = $('#view-' + tab.id);
   let name = '';
   try {
-    name = await $('#view-' + tab.id).executeJavaScript(PRODUCT_NAME_SCRIPT, false);
+    name = await view.executeJavaScript(PRODUCT_NAME_SCRIPT, false);
   } catch { /* 页面未就绪用标题兜底 */ }
   if (!name) name = tabTitle(tab);
-  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now() });
+
+  // 选品建档：抓渲染后的完整 HTML 存独立目录
+  let file = '';
+  try {
+    const html = await view.executeJavaScript('document.documentElement.outerHTML', false);
+    if (html) {
+      const result = await window.workManager.archivePage({ html, url: tab.url, title: name });
+      if (result?.ok) file = result.file;
+    }
+  } catch { /* 建档失败不阻塞收藏 */ }
+
+  items.unshift({ id: Date.now(), title: name, url: tab.url, addedAt: Date.now(), file });
   writeSelection(items);
   renderSelection();
   updateBookmarkState();
-  toast(`已收藏：${name}`);
+  toast(file ? `已收藏并建档：${name}` : `已收藏（建档失败）：${name}`);
 }
 
 function syncAddress() {
@@ -1098,7 +1110,16 @@ function renderSelection() {
       renderSelection();
     });
 
-    row.append(idx, info, remove);
+    if (item.file) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.cssText = 'background:#DBE7C5;color:#536534;flex-shrink:0';
+      chip.textContent = '已建档';
+      chip.title = item.file;
+      row.append(idx, info, chip, remove);
+    } else {
+      row.append(idx, info, remove);
+    }
     list.appendChild(row);
   });
 }

@@ -1,5 +1,9 @@
 const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session } = require('electron');
+const fsPromises = require('fs/promises');
 const path = require('path');
+
+// 选品建档：HTML 快照独立目录（git 忽略，未来在此解析商品信息）
+const ARCHIVE_DIR = path.join(__dirname, '..', '..', 'selection-archive');
 
 Menu.setApplicationMenu(null);
 
@@ -212,6 +216,32 @@ app.on('web-contents-created', (_event, contents) => {
 ipcMain.handle('browser:open-external', (_event, url) => {
   if (typeof url === 'string' && SUPPORTED_URL.test(url)) {
     shell.openExternal(url);
+  }
+});
+
+// 选品建档：保存渲染后的完整 HTML + 元数据 JSON，返回文件名挂到清单条目
+ipcMain.handle('browser:archive-page', async (_event, payload) => {
+  try {
+    if (typeof payload !== 'object' || payload === null) return { ok: false, error: 'bad payload' };
+    const { html, url, title } = payload;
+    if (typeof html !== 'string' || !html || typeof url !== 'string' || !SUPPORTED_URL.test(url)) {
+      return { ok: false, error: 'bad payload' };
+    }
+    await fsPromises.mkdir(ARCHIVE_DIR, { recursive: true });
+    let host = 'page';
+    try {
+      host = new URL(url).hostname.replace(/^www\./, '').replace(/[^\w.-]/g, '') || 'page';
+    } catch { /* 保底文件名 */ }
+    const name = `${new Date().toISOString().slice(0, 10)}_${host}_${Date.now()}`;
+    await fsPromises.writeFile(path.join(ARCHIVE_DIR, `${name}.html`), html, 'utf8');
+    await fsPromises.writeFile(
+      path.join(ARCHIVE_DIR, `${name}.json`),
+      JSON.stringify({ url, title: typeof title === 'string' ? title : '', savedAt: new Date().toISOString() }, null, 2),
+      'utf8'
+    );
+    return { ok: true, file: `${name}.html` };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
   }
 });
 

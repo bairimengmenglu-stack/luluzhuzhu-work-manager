@@ -15,5 +15,7 @@ contextBridge.exposeInMainWorld('workManager', {
   // settings.browser.*：忽略证书校验 / 清除数据
   setInsecure: (on) => ipcRenderer.invoke('browser:set-insecure', on),
   clearData: (mode) => ipcRenderer.invoke('browser:clear-data', mode),
-  confirmClearAll: () => ipcRenderer.invoke('browser:confirm-clear-all')
+  confirmClearAll: () => ipcRenderer.invoke('browser:confirm-clear-all'),
+  // 选品建档：保存当前页完整 HTML
+  archivePage: (payload) => ipcRenderer.invoke('browser:archive-page', payload)
 });
