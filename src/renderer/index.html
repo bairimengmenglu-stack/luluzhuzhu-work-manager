@@ -294,6 +294,9 @@
               <button id="b-bookmark" class="icon-btn" title="收藏到选品清单" disabled>
                 <svg class="ic" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
               </button>
+              <button id="b-local" class="icon-btn" title="本地建档文件">
+                <svg class="ic" viewBox="0 0 24 24"><path d="M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+              </button>
               <button id="b-responsive" class="icon-btn" title="自由尺寸">
                 <svg class="ic" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
               </button>
@@ -344,6 +347,16 @@
               </div>
             </div>
 
+            <div id="local-files" class="pane-overlay hidden">
+              <div class="lf-head">
+                <span class="lf-title">本地建档文件</span>
+                <button id="lf-close" class="icon-btn" title="关闭">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+              <div id="lf-list"></div>
+            </div>
+
             <div id="tab-overview" class="menu hidden"></div>
             <div id="toast-wrap"></div>
           </div>
@@ -352,5 +365,8 @@
     </div>
   </div>
   <script src="app.js"></script>
+  <div id="lightbox" class="hidden">
+    <img id="lightbox-img" alt="" />
+  </div>
 </body>
 </html>

@@ -24,5 +24,7 @@ contextBridge.exposeInMainWorld('workManager', {
   deleteArchive: (file) => ipcRenderer.invoke('browser:delete-archive', file),
   // 建档目录（渲染层拼接 file:// 预览图）
   archiveRoot: () => ipcRenderer.invoke('browser:archive-root'),
-  openArchiveFile: (rel) => ipcRenderer.invoke('browser:open-archive-file', rel)
+  openArchiveFile: (rel) => ipcRenderer.invoke('browser:open-archive-file', rel),
+  // 本地建档文件清单
+  listArchive: () => ipcRenderer.invoke('browser:list-archive')
 });

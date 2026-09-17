@@ -380,6 +380,51 @@ ipcMain.handle('browser:open-archive-file', async (_event, rel) => {
   }
 });
 
+// 本地建档文件清单（按修改时间倒序）
+ipcMain.handle('browser:list-archive', async () => {
+  try {
+    await fsPromises.mkdir(ARCHIVE_DIR, { recursive: true });
+    const names = await fsPromises.readdir(ARCHIVE_DIR);
+    const bases = new Map();
+    for (const n of names) {
+      const full = path.join(ARCHIVE_DIR, n);
+      let base = null;
+      let isDir = false;
+      if (n.endsWith('.html')) { base = n.slice(0, -5); }
+      else if (n.endsWith('_files')) { base = n.slice(0, -6); isDir = true; }
+      if (base === null) continue;
+      const b = bases.get(base) || { base, html: '', images: 0, mtime: 0 };
+      try {
+        const st = await fsPromises.stat(full);
+        b.mtime = Math.max(b.mtime, st.mtimeMs);
+      } catch { /* 忽略 */ }
+      if (isDir) {
+        try { b.images = (await fsPromises.readdir(full)).length; } catch { /* 忽略 */ }
+      } else {
+        b.html = n;
+      }
+      bases.set(base, b);
+    }
+    const out = [];
+    for (const b of bases.values()) {
+      let title = '';
+      let date = '';
+      if (b.html) {
+        try {
+          const j = JSON.parse(await fsPromises.readFile(path.join(ARCHIVE_DIR, b.base + '.json'), 'utf8'));
+          title = j.title || '';
+          date = (j.savedAt || '').slice(0, 10);
+        } catch { /* 无元数据 */ }
+      }
+      out.push({ base: b.base, html: b.html, title, date, images: b.images, mtime: b.mtime });
+    }
+    out.sort((a, b2) => b2.mtime - a.mtime);
+    return out;
+  } catch {
+    return [];
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

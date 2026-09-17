@@ -700,14 +700,9 @@ body.platform-win32 {
   width: 100%;
 }
 
-/* 浏览器面板在选品模式占 2/3，并屏蔽常规宽度调整 */
+/* 浏览器面板在选品模式默认占 2/3（flex 2），分隔条可拖动并记忆 */
 .side-pane.selecting {
-  width: auto !important;
   flex: 2 1 0;
-}
-
-.side-pane.selecting #pane-resize-handle {
-  display: none;
 }
 
 .sel-head {
@@ -876,6 +871,85 @@ body.platform-win32 {
   color: #737b96;
   font-size: 13px;
   text-align: center;
+}
+
+/* ---------- 本地建档文件浏览（浏览器工具栏） ---------- */
+
+#local-files {
+  z-index: 60;
+  padding: 16px;
+  gap: 10px;
+  overflow-y: auto;
+  align-items: stretch;
+  text-align: left;
+}
+
+.lf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lf-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303440;
+}
+
+.lf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #ebe9e0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.lf-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lf-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #303440;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lf-sub {
+  font-size: 12px;
+  color: #737b96;
+}
+
+.lf-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ---------- 灯箱（应用内图片预览） ---------- */
+
+#lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: zoom-out;
+}
+
+#lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
 }
 
 /* ---------- 图标按钮 ---------- */

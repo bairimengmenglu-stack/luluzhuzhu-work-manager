@@ -1068,23 +1068,53 @@ function setPaneOpen(open) {
 function initPaneResize() {
   const handle = $('#pane-resize-handle');
   const pane = $('#browser-pane');
-  let startX = 0, startW = 0, dragging = false;
+  const savedPane = parseInt(localStorage.getItem('browser.pane'), 10);
+  if (savedPane >= 320 && savedPane <= 900) pane.style.width = savedPane + 'px';
+
+  let startX = 0, startW = 0, dragging = false, selMode = false;
 
   handle.addEventListener('pointerdown', (e) => {
     dragging = true;
     startX = e.clientX;
-    startW = pane.getBoundingClientRect().width;
+    selMode = isSelecting();
+    startW = selMode
+      ? $('#selection-panel').getBoundingClientRect().width
+      : pane.getBoundingClientRect().width;
     handle.setPointerCapture(e.pointerId);
   });
   handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const w = Math.min(900, Math.max(320, startW + (startX - e.clientX)));
-    pane.style.width = w + 'px';
+    if (selMode) {
+      // 选品模式：拖分隔条改左侧清单宽度（默认 1:2），松手记忆
+      const w = Math.min(Math.round(window.innerWidth * 0.7), Math.max(180, startW + (e.clientX - startX)));
+      const sel = $('#selection-panel');
+      sel.style.width = w + 'px';
+      sel.style.flex = '0 0 auto';
+    } else {
+      const w = Math.min(900, Math.max(320, startW + (startX - e.clientX)));
+      pane.style.width = w + 'px';
+    }
   });
-  handle.addEventListener('pointerup', () => { dragging = false; });
+  handle.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (selMode) {
+      localStorage.setItem('selection.split', $('#selection-panel').style.width);
+    } else {
+      const w = Math.round(pane.getBoundingClientRect().width);
+      if (w >= 320 && w <= 900) localStorage.setItem('browser.pane', String(w));
+    }
+  });
   handle.addEventListener('dblclick', () => {
-    const wide = pane.getBoundingClientRect().width > 600;
-    pane.style.width = wide ? '' : Math.round(window.innerWidth * 0.6) + 'px';
+    if (isSelecting()) {
+      const sel = $('#selection-panel');
+      sel.style.width = '';
+      sel.style.flex = '';
+      localStorage.removeItem('selection.split');
+    } else {
+      const wide = pane.getBoundingClientRect().width > 600;
+      pane.style.width = wide ? '' : Math.round(window.innerWidth * 0.6) + 'px';
+    }
   });
 }
 
@@ -1226,6 +1256,9 @@ function bindEvents() {
   });
 
   $('#b-picker').addEventListener('click', togglePicker);
+  $('#b-local').addEventListener('click', () => toggleLocalFiles());
+  $('#lf-close').addEventListener('click', () => toggleLocalFiles(false));
+  $('#lightbox').addEventListener('click', () => $('#lightbox').classList.add('hidden'));
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.menu') && !e.target.closest('#btn-add-tab') &&
@@ -1392,7 +1425,7 @@ function renderSelection() {
           img.src = fileUrl(rel);
           img.loading = 'lazy';
           img.title = `${rel}（点击放大）`;
-          img.addEventListener('click', () => window.workManager.openArchiveFile(rel));
+          img.addEventListener('click', () => openLightbox(fileUrl(rel)));
           cells.appendChild(img);
         }
         wrap.appendChild(cells);
@@ -1424,13 +1457,27 @@ function isTaobaoUrl(url) {
   }
 }
 
+function isSelecting() {
+  return $('#workbench').classList.contains('selecting');
+}
+
 function startSelection() {
   selectionPriorPane = state.paneOpen;
   $('#workbench').classList.add('selecting');
   $('#browser-pane').classList.add('selecting');
   setSelectionCollapsed(false);
   setPaneOpen(true);
-  // 已有淘宝标签就直接复用，不再重复开新标签
+  // 恢复记忆的分栏比例（默认 1:2）
+  const savedSplit = localStorage.getItem('selection.split');
+  const sel = $('#selection-panel');
+  if (savedSplit) {
+    sel.style.width = savedSplit;
+    sel.style.flex = '0 0 auto';
+  } else {
+    sel.style.width = '';
+    sel.style.flex = '';
+  }
+  // 已有淘宝/天猫标签就直接复用，不再重复开新标签
   const existing = state.tabs.find((t) => isTaobaoUrl(t.url));
   if (existing) {
     activateTab(existing.id);
@@ -1447,6 +1494,86 @@ function exitSelection() {
   $('#workbench').classList.remove('selecting');
   $('#browser-pane').classList.remove('selecting');
   if (!selectionPriorPane) setPaneOpen(false);
+}
+
+/* ---------- 本地建档文件浏览（浏览器工具栏） ---------- */
+
+function toggleLocalFiles(force) {
+  const el = $('#local-files');
+  const show = force !== undefined ? force : el.classList.contains('hidden');
+  el.classList.toggle('hidden', !show);
+  $('#b-local').classList.toggle('pressed', show);
+  if (show) loadArchiveList();
+}
+
+async function loadArchiveList() {
+  const list = $('#lf-list');
+  list.innerHTML = '<div class="sel-grid-empty">加载中…</div>';
+  const entries = await window.workManager.listArchive();
+  list.textContent = '';
+
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'sel-grid-empty';
+    empty.textContent = '还没有建档文件 —— 收藏商品页后会自动保存在这里';
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'lf-row';
+
+    const info = document.createElement('div');
+    info.className = 'lf-info';
+    const name = document.createElement('div');
+    name.className = 'lf-name';
+    name.textContent = entry.title || entry.base;
+    name.title = entry.base;
+    const sub = document.createElement('div');
+    sub.className = 'lf-sub';
+    sub.textContent = `${entry.date} · 图 ${entry.images}`;
+    info.append(name, sub);
+
+    const actions = document.createElement('div');
+    actions.className = 'lf-actions';
+    const mk = (label, fn, cls = 'mini-btn') => {
+      const b = document.createElement('button');
+      b.className = cls;
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      return b;
+    };
+    if (entry.html) {
+      actions.appendChild(mk('预览', () => {
+        toggleLocalFiles(false);
+        setPaneOpen(true);
+        const tab = activeTab();
+        const fileUrlStr = fileUrl(entry.html);
+        if (tab && !tab.url) {
+          $('#view-' + tab.id).loadURL(fileUrlStr);
+        } else {
+          createTab(fileUrlStr);
+        }
+      }));
+    }
+    actions.appendChild(mk('目录', () => window.workManager.openArchiveFile(entry.base + '_files')));
+    actions.appendChild(mk('删除', async () => {
+      if (entry.html) await window.workManager.deleteArchive(entry.html);
+      // 同步清理选品清单中对该建档的引用
+      writeSelection(readSelection().map((i) => (i.file === entry.html ? { ...i, file: '', status: 'failed', filesByCat: undefined } : i)));
+      renderSelection();
+      loadArchiveList();
+    }, 'mini-btn sel-exit'));
+
+    row.append(info, actions);
+    list.appendChild(row);
+  }
+}
+
+function openLightbox(src) {
+  $('#lightbox-img').src = src;
+  $('#lightbox').classList.remove('hidden');
 }
 
 /* ---------- 启动 ---------- */
