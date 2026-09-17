@@ -1108,16 +1108,29 @@ function setSelectionCollapsed(collapsed) {
   $('#selection-panel').classList.toggle('collapsed', collapsed);
 }
 
+function isTaobaoUrl(url) {
+  try {
+    return /(^|\.)taobao\.com$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function startSelection() {
   selectionPriorPane = state.paneOpen;
   $('#workbench').classList.add('selecting');
   $('#browser-pane').classList.add('selecting');
   setSelectionCollapsed(false);
   setPaneOpen(true);
-  // 直接新建标签加载淘宝：复用空标签时 webview 可能尚未就绪，loadURL 会静默失败
-  createTab(SELECTION_HOME);
-  for (const t of [...state.tabs]) {
-    if (!t.url) closeTab(t.id);
+  // 已有淘宝标签就直接复用，不再重复开新标签
+  const existing = state.tabs.find((t) => isTaobaoUrl(t.url));
+  if (existing) {
+    activateTab(existing.id);
+  } else {
+    createTab(SELECTION_HOME);
+    for (const t of [...state.tabs]) {
+      if (!t.url) closeTab(t.id);
+    }
   }
   renderSelection();
 }
