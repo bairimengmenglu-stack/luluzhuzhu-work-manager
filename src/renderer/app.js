@@ -11,6 +11,7 @@ const state = {
   responsive: false,
   responsiveZoom: 'fit',
   picking: false,
+  expandedSelId: null,
   nextTabId: 1
 };
 
@@ -83,6 +84,14 @@ function relTime(ts) {
 
 const URL_SCHEMES = /^(https?|file|about|data):/i;
 const BARE_HOST = /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/i;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let ARCHIVE_ROOT = '';
+
+function fileUrl(rel) {
+  if (!ARCHIVE_ROOT || !rel) return '';
+  return 'file:///' + (ARCHIVE_ROOT.replace(/\\/g, '/') + '/' + rel).replace(/^\/+/, '');
+}
 
 function resolveUrl(raw) {
   const input = (raw || '').trim();
@@ -360,7 +369,9 @@ function syncToolbar() {
   updateBookmarkState();
 }
 
-// 选品建档：页面内一次性提取 分类图片 + 商品信息（标题/价格/SKU/参数）
+// 选品建档识图 v3：分类规则参考 Fatkun smartRules（淘宝/天猫站点规则 + alicdn 高清链）
+// 主图 [class*=picGallery] li img · SKU [class*=SkuContent] [class*=skuItem] img
+// 详情 .desc-root img · 视频 video；其余走通用启发式并按 naturalWidth 过滤垃圾图
 const PRODUCT_DATA_SCRIPT = `(() => {
   const abs = (u) => {
     try {
@@ -368,23 +379,34 @@ const PRODUCT_DATA_SCRIPT = `(() => {
       return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null;
     } catch { return null; }
   };
-  const cats = { video: [], sku: [], main: [], other: [] };
-  const seen = new Set();
-  const push = (cat, u) => { if (u && !seen.has(u)) { seen.add(u); cats[cat].push(u); } };
-  const ancestorText = (el) => {
-    let s = '', n = el;
-    for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
-      s += ' ' + (n.className || '') + ' ' + (n.id || '');
-    }
-    return s.toLowerCase();
+  const HD_RULES = [
+    [/_\\.webp/i, ''],
+    [/\\.png_\\d+x\\d+\\.png$/i, '.png'],
+    [/_(\\d+)x(\\d+)\\.jpg$/i, '_800x800.jpg'],
+    [/_(\\d+)x(\\d+)[qQ](\\d+)\\.jpg.*/i, ''],
+    [/_640x0q80_\\.webp/i, ''],
+    [/_640x0q80$/i, ''],
+    [/_(\\d+)x(\\d+).*/i, ''],
+    [/-tps-\\d+-\\d+/i, ''],
+    [/\\.(\\d+)x(\\d+)\\./, '.'],
+    [/\\.jpg.*/i, '.jpg'],
+    [/\\.png.*/i, '.png']
+  ];
+  const hd = (u) => {
+    if (!u || !/alicdn\\.com/i.test(u)) return u;
+    let out = u;
+    for (const [re, rep] of HD_RULES) out = out.replace(re, rep);
+    return out;
   };
-  for (const v of document.querySelectorAll('video')) {
-    const src = v.currentSrc || v.src || (v.querySelector('source') && v.querySelector('source').src);
-    push('video', abs(src));
-    push('video', abs(v.poster));
-  }
+  const cats = { video: [], sku: [], main: [], detail: [], other: [] };
+  const seen = new Set();
+  const push = (cat, u, withHd) => {
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    cats[cat].push(withHd ? { url: u, hd: hd(u) } : { url: u, hd: '' });
+  };
   const LAZY = ['src', 'data-src', 'data-lazy-src', 'data-original'];
-  for (const img of document.querySelectorAll('img')) {
+  const urlsOf = (img) => {
     const urls = [];
     for (const a of LAZY) {
       const u = abs(img.getAttribute(a));
@@ -396,16 +418,69 @@ const PRODUCT_DATA_SCRIPT = `(() => {
         if (u) urls.push(u);
       }
     }
-    if (!urls.length) continue;
-    const anc = ancestorText(img);
-    const cat = /sku|variant|prop|color/i.test(anc) ? 'sku'
-      : /gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) ? 'main' : 'other';
-    for (const u of urls) push(cat, u);
+    return urls;
+  };
+  const bigEnough = (img) => {
+    const w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+    return w === 0 || h === 0 || (w >= 100 && h >= 100);
+  };
+  const isItemPage = /(?:tmall|liangxinyao)\\.(?:com|hk)|item\\.taobao\\.com/i.test(location.href);
+  const ancestorText = (el) => {
+    let s = '', n = el;
+    for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
+      s += ' ' + (n.className || '') + ' ' + (n.id || '');
+    }
+    return s.toLowerCase();
+  };
+
+  for (const v of document.querySelectorAll('video')) {
+    push('video', abs(v.currentSrc || v.src || (v.querySelector('source') && v.querySelector('source').src)), false);
+    push('video', abs(v.poster), false);
   }
-  const ogImg = document.querySelector('meta[property="og:image"]');
-  if (ogImg && ogImg.content) {
-    const u = abs(ogImg.content);
-    if (u && !seen.has(u)) { seen.add(u); cats.main.unshift(u); }
+
+  if (isItemPage) {
+    // Fatkun 淘宝/天猫站点规则（加 i 标志，类名大小写不敏感），通用遍历兜底补漏
+    const collect = (sel, cat) => {
+      for (const img of document.querySelectorAll(sel)) {
+        for (const u of urlsOf(img)) push(cat, u, true);
+      }
+    };
+    collect('[class*="picgallery" i] img', 'main');
+    collect('[class*="skuitem" i] img, [class*="skucontent" i] img, [class*="sku" i] img', 'sku');
+    collect('.desc-root img, [class*="descroot" i] img', 'detail');
+    for (const img of document.querySelectorAll('img')) {
+      const urls = urlsOf(img);
+      if (!urls.length) continue;
+      const anc = ancestorText(img);
+      if (/sku|variant|prop|color/i.test(anc) && !cats.sku.length) {
+        for (const u of urls) push('sku', u, true);
+        continue;
+      }
+      if (/gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) && !cats.main.length) {
+        for (const u of urls) push('main', u, true);
+        continue;
+      }
+      if (bigEnough(img)) {
+        for (const u of urls) push('other', u, true);
+      }
+    }
+  } else {
+    // 通用启发式：容器类名判断主图/SKU，其余按尺寸过滤
+    for (const img of document.querySelectorAll('img')) {
+      const urls = urlsOf(img);
+      if (!urls.length) continue;
+      const anc = ancestorText(img);
+      const cat = /sku|variant|prop|color/i.test(anc) ? 'sku'
+        : /gallery|mainpic|pic|carousel|swiper|thumb|banner|slide/i.test(anc) ? 'main'
+        : bigEnough(img) ? 'detail' : '';
+      if (!cat) continue;
+      for (const u of urls) push(cat, u, cat !== 'detail');
+    }
+    const ogImg = document.querySelector('meta[property="og:image"]');
+    if (ogImg && ogImg.content) {
+      const u = abs(ogImg.content);
+      if (u && !seen.has(u)) { seen.add(u); cats.main.unshift({ url: u, hd: '' }); }
+    }
   }
   const info = {};
   const ogTitle = document.querySelector('meta[property="og:title"]');
@@ -425,9 +500,8 @@ const PRODUCT_DATA_SCRIPT = `(() => {
     const key = t + '|' + (u || '');
     if ((t || u) && !skuSeen.has(key)) {
       skuSeen.add(key);
-      const entry = {};
-      if (t) entry.name = t;
-      if (u) entry.img = u;
+      const entry = { name: t || '', img: u || '', hd: u ? hd(u) : '' };
+      if (!entry.name && !entry.img) continue;
       info.skus.push(entry);
     }
     if (info.skus.length >= 30) break;
@@ -470,6 +544,14 @@ async function bookmarkCurrentPage() {
   }
 
   const view = $('#view-' + tab.id);
+  // 预滚动触发懒加载（详情图多在页尾），再回到顶部
+  try {
+    for (const y of [800, 2000, 4000, 8000, 20000]) {
+      await view.executeJavaScript(`window.scrollTo(0, ${y})`, false);
+      await sleep(300);
+    }
+    await view.executeJavaScript('window.scrollTo(0, 0)', false);
+  } catch { /* 滚动失败忽略 */ }
   let data = null;
   try {
     data = await view.executeJavaScript(PRODUCT_DATA_SCRIPT, false);
@@ -529,7 +611,7 @@ async function bookmarkCurrentPage() {
       }
       const catPaths = {};
       for (const cat of Object.keys(cats)) {
-        catPaths[cat] = cats[cat].map((u) => map[u]).filter(Boolean);
+        catPaths[cat] = cats[cat].map((e) => map[e.url]).filter(Boolean);
       }
       const result = await window.workManager.archivePage({
         baseName,
@@ -549,7 +631,7 @@ async function bookmarkCurrentPage() {
         return;
       }
       if (result?.ok) {
-        updateItem(item.id, { file: result.file, images: Object.keys(map).length, status: 'done' });
+        updateItem(item.id, { file: result.file, images: Object.keys(map).length, status: 'done', filesByCat: catPaths });
         toast(`建档完成：${name}（图 ${Object.keys(map).length}）`);
       } else {
         updateItem(item.id, { status: 'failed' });
@@ -1246,6 +1328,7 @@ function renderSelection() {
 
     const info = document.createElement('div');
     info.className = 'sel-info';
+    info.title = '点击查看分类图片';
     const title = document.createElement('div');
     title.className = 'sel-item-title';
     title.textContent = item.title || hostOf(item.url);
@@ -1262,6 +1345,11 @@ function renderSelection() {
     remove.addEventListener('click', async () => {
       if (item.file) await window.workManager.deleteArchive(item.file);
       writeSelection(readSelection().filter((i) => i.id !== item.id));
+      renderSelection();
+    });
+
+    info.addEventListener('click', () => {
+      state.expandedSelId = state.expandedSelId === item.id ? null : item.id;
       renderSelection();
     });
 
@@ -1289,6 +1377,50 @@ function renderSelection() {
       row.append(idx, info, remove);
     }
     list.appendChild(row);
+
+    // Fatkun 式分类图片网格：点击条目展开
+    if (state.expandedSelId === item.id) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sel-grid-wrap';
+      const catLabels = { main: '主图', sku: 'SKU', detail: '详情', video: '视频', other: '其他' };
+      let any = false;
+      for (const cat of ['main', 'sku', 'detail', 'video', 'other']) {
+        const files = (item.filesByCat && item.filesByCat[cat]) || [];
+        if (!files.length) continue;
+        any = true;
+        const head = document.createElement('div');
+        head.className = 'sel-grid-title';
+        head.textContent = `${catLabels[cat]}（${files.length}）`;
+        wrap.appendChild(head);
+        const cells = document.createElement('div');
+        cells.className = 'sel-grid';
+        for (const rel of files) {
+          if (cat === 'video' || /\.(mp4|webm|mov)$/i.test(rel)) {
+            const v = document.createElement('video');
+            v.className = 'sel-grid-media';
+            v.src = fileUrl(rel);
+            v.controls = true;
+            cells.appendChild(v);
+            continue;
+          }
+          const img = document.createElement('img');
+          img.className = 'sel-grid-thumb';
+          img.src = fileUrl(rel);
+          img.loading = 'lazy';
+          img.title = `${rel}（点击放大）`;
+          img.addEventListener('click', () => window.workManager.openArchiveFile(rel));
+          cells.appendChild(img);
+        }
+        wrap.appendChild(cells);
+      }
+      if (!any) {
+        const empty = document.createElement('div');
+        empty.className = 'sel-grid-empty';
+        empty.textContent = item.status === 'archiving' ? '后台建档中，完成后显示分类图片…' : '暂无图片';
+        wrap.appendChild(empty);
+      }
+      list.appendChild(wrap);
+    }
   });
 }
 
@@ -1341,6 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebarResize();
   setSidebarOpen(localStorage.getItem('sidebar.collapsed') !== '1');
   loadViewport();
+  window.workManager.archiveRoot?.().then((root) => { ARCHIVE_ROOT = root; }).catch(() => {});
   window.workManager.setInsecure?.(localStorage.getItem(INSECURE_KEY) === '1');
   setPaneOpen(false);
 

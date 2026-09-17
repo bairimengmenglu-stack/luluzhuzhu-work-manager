@@ -238,25 +238,32 @@ ipcMain.handle('browser:archive-images', async (_event, payload) => {
     }
     const dir = path.join(ARCHIVE_DIR, `${baseName}_files`);
     await fsPromises.mkdir(dir, { recursive: true });
+    // 条目为 {url, hd}：hd 为渲染层按 Fatkun alicdn 规则生成的高清链，优先下载
     const cats = {};
-    for (const cat of ['video', 'sku', 'main', 'other']) {
-      if (Array.isArray(categorized[cat])) cats[cat] = [...new Set(categorized[cat])].filter((u) => /^https?:\/\//i.test(u)).slice(0, 80);
+    for (const cat of ['video', 'sku', 'main', 'detail', 'other']) {
+      if (Array.isArray(categorized[cat])) {
+        cats[cat] = categorized[cat]
+          .filter((e) => e && typeof e.url === 'string' && /^https?:\/\//i.test(e.url))
+          .slice(0, 80);
+      }
     }
     const map = {};
     const failed = [];
     const queue = [];
     for (const cat of Object.keys(cats)) {
-      for (const url of cats[cat]) queue.push({ cat, url });
+      for (const entry of cats[cat]) {
+        queue.push({ cat, url: entry.url, target: entry.hd && /^https?:\/\//i.test(entry.hd) ? entry.hd : entry.url });
+      }
     }
     const counters = {};
     const isVideo = (u) => /\.(mp4|m4v|mov|webm)(\?|$)/i.test(u);
     const worker = async () => {
       while (queue.length) {
-        const { cat, url } = queue.shift();
+        const { cat, url, target } = queue.shift();
         try {
-          const video = isVideo(url);
-          if (/\.m3u8(\?|$)/i.test(url)) continue; // HLS 流无法单文件保存
-          const res = await net.fetch(url, {
+          const video = isVideo(target);
+          if (/\.m3u8(\?|$)/i.test(target)) continue; // HLS 流无法单文件保存
+          const res = await net.fetch(target, {
             session: session.fromPartition(BROWSER_PARTITION),
             useSessionCookies: true,
             signal: AbortSignal.timeout(video ? 60000 : 15000),
@@ -265,7 +272,8 @@ ipcMain.handle('browser:archive-images', async (_event, payload) => {
           // 注意：net.fetch 不能手动注入 referer 头（ERR_BLOCKED_BY_CLIENT），共享 session 自带缓存与 Cookie
           if (!res.ok) { if (failed.length < 5) failed.push(`${res.status} ${url.slice(0, 60)}`); continue; }
           const buf = Buffer.from(await res.arrayBuffer());
-          if (!video && buf.length < 2048) continue;
+          // 小图过滤仅用于 detail/other（排除图标占位图）；SKU 色块与主图缩略本身是小图，需豁免
+          if (!video && (cat === 'detail' || cat === 'other') && buf.length < 2048) continue;
           const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
           let ext = EXT_BY_MIME[mime]
             || (path.extname(new URL(url).pathname).match(/^(\.\w{1,5})$/) ? RegExp.$1 : '');
@@ -334,6 +342,20 @@ ipcMain.handle('browser:delete-archive', async (_event, file) => {
     return { ok: true };
   } catch {
     return { ok: false };
+  }
+});
+
+ipcMain.handle('browser:archive-root', () => ARCHIVE_DIR);
+
+// 打开建档目录内的本地文件（校验路径不越界）
+ipcMain.handle('browser:open-archive-file', async (_event, rel) => {
+  try {
+    if (typeof rel !== 'string' || !rel) return false;
+    const full = path.resolve(ARCHIVE_DIR, rel);
+    if (!full.startsWith(path.resolve(ARCHIVE_DIR))) return false;
+    return await shell.openPath(full);
+  } catch {
+    return false;
   }
 });
 

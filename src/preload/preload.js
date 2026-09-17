@@ -21,5 +21,8 @@ contextBridge.exposeInMainWorld('workManager', {
   // 选品建档：批量下载页面图片
   archiveImages: (payload) => ipcRenderer.invoke('browser:archive-images', payload),
   // 删除选品条目时同步删除建档文件
-  deleteArchive: (file) => ipcRenderer.invoke('browser:delete-archive', file)
+  deleteArchive: (file) => ipcRenderer.invoke('browser:delete-archive', file),
+  // 建档目录（渲染层拼接 file:// 预览图）
+  archiveRoot: () => ipcRenderer.invoke('browser:archive-root'),
+  openArchiveFile: (rel) => ipcRenderer.invoke('browser:open-archive-file', rel)
 });
