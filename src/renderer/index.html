@@ -11,6 +11,7 @@
   <div id="app">
     <!-- 左侧栏 -->
     <aside id="sidebar">
+      <div id="sb-resize-handle" title="拖动调整宽度，双击恢复默认"></div>
       <div class="sb-top">
         <div id="logo" title="luluzhuzhu 工作管理">lz</div>
       </div>
@@ -57,6 +58,10 @@
       <!-- 标题栏（ZCode 布局：左侧会话导航箭头 + 标题 + 工作区芯片；整栏可拖动） -->
       <header id="titlebar" class="tb-drag">
         <div class="tb-left">
+          <button id="btn-toggle-sidebar" class="tb-icon tb-no-drag" title="切换侧边栏 (Ctrl+B)">
+            <svg id="ic-sidebar-close" class="ic" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+            <svg id="ic-sidebar-open" class="ic hidden" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 9-3 3 3 3"/></svg>
+          </button>
           <button class="tb-icon tb-nav" disabled title="后退">
             <svg class="ic" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           </button>

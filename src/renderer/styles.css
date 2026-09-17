@@ -70,6 +70,7 @@ input {
 /* ---------- 左侧栏 ---------- */
 
 #sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 236px;
@@ -77,6 +78,17 @@ input {
   background: var(--sidebar);
   border-right: 1px solid var(--border);
   user-select: none;
+}
+
+/* ZCode resizeSidebar：侧栏右缘拖拽调宽 */
+#sb-resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 40;
+  cursor: col-resize;
 }
 
 .sb-top {

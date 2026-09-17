@@ -7,11 +7,59 @@ const state = {
   closed: [],         // { title, url, closedAt }
   activeTabId: null,
   paneOpen: false,
+  sidebarOpen: true,
   responsive: false,
   responsiveZoom: 'fit',
   picking: false,
   nextTabId: 1
 };
+
+/* ---------- 左侧栏收起与调宽（ZCode toggleSidebar / resizeSidebar） ---------- */
+
+const SIDEBAR_DEFAULT_WIDTH = 236;
+const SIDEBAR_RANGE = { min: 180, max: 340 };
+
+function sidebarWidthOk(w) {
+  return Number.isInteger(w) && w >= SIDEBAR_RANGE.min && w <= SIDEBAR_RANGE.max;
+}
+
+function setSidebarOpen(open) {
+  state.sidebarOpen = open;
+  $('#sidebar').hidden = !open;
+  $('#ic-sidebar-close').classList.toggle('hidden', !open);
+  $('#ic-sidebar-open').classList.toggle('hidden', open);
+  $('#btn-toggle-sidebar').title = open ? '隐藏侧边栏 (Ctrl+B)' : '显示侧边栏 (Ctrl+B)';
+  try { localStorage.setItem('sidebar.collapsed', open ? '0' : '1'); } catch { /* 忽略 */ }
+}
+
+function initSidebarResize() {
+  const handle = $('#sb-resize-handle');
+  const sidebar = $('#sidebar');
+  const saved = parseInt(localStorage.getItem('sidebar.width'), 10);
+  if (sidebarWidthOk(saved)) sidebar.style.width = saved + 'px';
+
+  let startX = 0, startW = 0, dragging = false;
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sidebar.getBoundingClientRect().width;
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const w = startW + (e.clientX - startX);
+    if (sidebarWidthOk(w)) sidebar.style.width = w + 'px';
+  });
+  handle.addEventListener('pointerup', () => {
+    dragging = false;
+    const w = Math.round(sidebar.getBoundingClientRect().width);
+    if (sidebarWidthOk(w)) localStorage.setItem('sidebar.width', String(w));
+  });
+  handle.addEventListener('dblclick', () => {
+    sidebar.style.width = '';
+    localStorage.removeItem('sidebar.width');
+  });
+}
 
 /* ---------- 工具 ---------- */
 
@@ -906,6 +954,8 @@ function bindEvents() {
       return;
     }
     if (!e.ctrlKey || e.shiftKey || e.altKey) return;
+    // ZCode quickPick toggleSidebar：Ctrl+B 切换左侧栏
+    if (e.key === 'b' || e.key === 'B') { e.preventDefault(); setSidebarOpen(!state.sidebarOpen); return; }
     if (e.key === '1') { e.preventDefault(); setPaneOpen(false); }
     if (e.key === '2') { e.preventDefault(); setPaneOpen(!state.paneOpen); }
     if (!state.paneOpen) return;
@@ -938,6 +988,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.body.classList.add('platform-' + (window.workManager.platform || 'unknown'));
   bindEvents();
   initPaneResize();
+  initSidebarResize();
+  setSidebarOpen(localStorage.getItem('sidebar.collapsed') !== '1');
   loadViewport();
   window.workManager.setInsecure?.(localStorage.getItem(INSECURE_KEY) === '1');
   setPaneOpen(false);
