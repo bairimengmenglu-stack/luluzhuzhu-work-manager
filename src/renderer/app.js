@@ -459,39 +459,73 @@ const PRODUCT_DATA_SCRIPT = `(() => {
       for (let i = start; i < t.length; i++) {
         const c = t[i];
         if (inStr) { if (c === '\\\\') { i++; continue; } if (c === q) inStr = false; continue; }
-        if (c === '"' || c === "'") { inStr = true; q = c; continue; }
+        if (c === '"' || c === "'" || c === '\\u0060') { inStr = true; q = c; continue; }
         if (c === '{') depth++;
         else if (c === '}') { depth--; if (depth === 0) return i; }
       }
       return -1;
     };
     let skuBase = null;
+    const BS = String.fromCharCode(92);
+    const unescapeRe = new RegExp(BS + '\\x28["' + BS + '\\x2Fbfnrt]', 'g');
+    const attempt = (text) => {
+      const starts = [text.indexOf('{')];
+      const kb = text.indexOf('skuBase');
+      if (kb > -1) {
+        starts.push(text.lastIndexOf('{', kb));
+        starts.push(text.indexOf('{', kb)); // "skuBase":{ 的对象开括号
+      }
+      const ki = text.indexOf('sku2info');
+      if (ki > -1) starts.push(text.lastIndexOf('{', ki));
+      const kp = text.indexOf('"props"') === -1 ? text.indexOf('props') : text.indexOf('"props"');
+      if (kp > -1) starts.push(text.lastIndexOf('{', kp));
+      for (const start of [...new Set(starts)]) {
+        if (start === -1) continue;
+        const end = balanceEnd(text, start);
+        if (end === -1) continue;
+        try {
+          const obj = JSON.parse(text.slice(start, end));
+          // 起始 { 可能正好是 skuBase 对象自身（键为 props/values）
+          let base = Array.isArray(obj.props) ? obj : findKey(obj, 'skuBase', 0);
+          if (base && Array.isArray(base.props)) return base;
+        } catch { /* 平衡片段不是合法 JSON */ }
+      }
+      return null;
+    };
     for (const s of document.querySelectorAll('script')) {
       const t = s.textContent || '';
       if (t.length < 1000 || !t.includes('skuBase')) continue;
-      const starts = [t.indexOf('{')];
-      const kb = t.indexOf('skuBase');
-      if (kb > -1) starts.push(t.lastIndexOf('{', kb));
-      const ki = t.indexOf('sku2info');
-      if (ki > -1) starts.push(t.lastIndexOf('{', ki));
-      for (const start of [...new Set(starts)]) {
-        if (start === -1) continue;
-        const end = balanceEnd(t, start);
-        if (end === -1) continue;
-        try {
-          const obj = JSON.parse(t.slice(start, end));
-          const base = findKey(obj, 'skuBase', 0);
-          if (base && Array.isArray(base.props)) { skuBase = base; break; }
-        } catch { /* 平衡片段不是合法 JSON */ }
-      }
+      // 淘宝/天猫 SSR 数据可能双重编码（转义 JSON 字符串再嵌入），先试原文再试反转义
+      skuBase = attempt(t);
+      if (!skuBase) skuBase = attempt(t.replace(unescapeRe, '$1'));
       if (skuBase) break;
     }
     if (skuBase) {
+      // 每个规格值一条，与页面「商品规格」数量一一对应；不参与全局去重
+      //（首个规格的图常与主图第一张相同，语义不同需保留）
       for (const prop of skuBase.props || []) {
         for (const v of prop.values || []) {
           const u = abs(v.img || v.image || '');
-          if (u) push('sku', u, true);
+          if (u) cats.sku.push({ url: u, hd: hd(u) });
         }
+      }
+    }
+    if (!cats.sku.length) {
+      // 容错：script 内嵌的是带 JS 语法的非纯 JSON 时，按正则从 skuBase→sku2info
+      // 片段提取规格大图（该片段内图片 URL 顺序 = 规格值顺序）
+      for (const s of document.querySelectorAll('script')) {
+        const t = s.textContent || '';
+        if (t.length < 1000 || !t.includes('skuBase')) continue;
+        const a = t.indexOf('skuBase');
+        let b = t.indexOf('sku2info', a);
+        if (b === -1) b = Math.min(t.length, a + 60000);
+        const seg = t.slice(a, b).split(String.fromCharCode(92) + '/').join('/');
+        const urls = seg.match(/https?:\/\/[a-z0-9.]*alicdn\.com\/(?:bao\/uploaded|imgextra)\/[^"' ]+?\.(?:jpg|jpeg|png|webp)/gi) || [];
+        for (const u0 of urls) {
+          const u = abs(u0);
+          if (u && !/-tps-\d+-\d+\./i.test(u)) cats.sku.push({ url: u, hd: hd(u) });
+        }
+        if (cats.sku.length) break;
       }
     }
     if (!cats.sku.length) {
@@ -1137,9 +1171,9 @@ function initPaneResize() {
   });
   handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    // 两种模式都改浏览器面板宽度：选品模式向左拖=加宽，普通模式向左拖=收窄
+    // 两种模式都改浏览器面板宽度，任意位置：选品模式范围更宽（左右各留 180px）
     const w = selMode
-      ? Math.min(Math.round(window.innerWidth * 0.75), Math.max(320, startW + (startX - e.clientX)))
+      ? Math.min(Math.round(window.innerWidth - 180), Math.max(180, startW + (startX - e.clientX)))
       : Math.min(900, Math.max(320, startW + (startX - e.clientX)));
     pane.style.width = w + 'px';
     pane.style.flex = '0 0 auto';

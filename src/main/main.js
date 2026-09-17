@@ -263,6 +263,7 @@ ipcMain.handle('browser:archive-images', async (_event, payload) => {
       while (queue.length) {
         const { cat, url, targets } = queue.shift();
         try {
+          if (map[url]) continue; // 多规格共享同一图时只下载一次，条目仍一一对应
           let buf = null;
           let mime = '';
           // SKU 需要可用大图：逐候选下载，sku 要求 ≥3KB（过滤坏图/占位图），全部失败再用原图
