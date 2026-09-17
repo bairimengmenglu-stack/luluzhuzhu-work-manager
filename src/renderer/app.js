@@ -1086,32 +1086,24 @@ function initPaneResize() {
   });
   handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    if (selMode) {
-      // 选品模式：拖分隔条改左侧清单宽度（默认 1:2），松手记忆
-      const w = Math.min(Math.round(window.innerWidth * 0.7), Math.max(180, startW + (e.clientX - startX)));
-      const sel = $('#selection-panel');
-      sel.style.width = w + 'px';
-      sel.style.flex = '0 0 auto';
-    } else {
-      const w = Math.min(900, Math.max(320, startW + (startX - e.clientX)));
-      pane.style.width = w + 'px';
-    }
+    // 两种模式都改浏览器面板宽度：选品模式向左拖=加宽，普通模式向左拖=收窄
+    const w = selMode
+      ? Math.min(Math.round(window.innerWidth * 0.75), Math.max(320, startW + (startX - e.clientX)))
+      : Math.min(900, Math.max(320, startW + (startX - e.clientX)));
+    pane.style.width = w + 'px';
+    pane.style.flex = '0 0 auto';
   });
   handle.addEventListener('pointerup', () => {
     if (!dragging) return;
     dragging = false;
-    if (selMode) {
-      localStorage.setItem('selection.split', $('#selection-panel').style.width);
-    } else {
-      const w = Math.round(pane.getBoundingClientRect().width);
-      if (w >= 320 && w <= 900) localStorage.setItem('browser.pane', String(w));
-    }
+    const w = Math.round(pane.getBoundingClientRect().width);
+    localStorage.setItem(selMode ? 'selection.split' : 'browser.pane', String(w));
   });
   handle.addEventListener('dblclick', () => {
     if (isSelecting()) {
-      const sel = $('#selection-panel');
-      sel.style.width = '';
-      sel.style.flex = '';
+      // 回到默认 1:2
+      pane.style.width = '';
+      pane.style.flex = '';
       localStorage.removeItem('selection.split');
     } else {
       const wide = pane.getBoundingClientRect().width > 600;
@@ -1469,15 +1461,15 @@ function startSelection() {
   $('#browser-pane').classList.add('selecting');
   setSelectionCollapsed(false);
   setPaneOpen(true);
-  // 恢复记忆的分栏比例（默认 1:2）
-  const savedSplit = localStorage.getItem('selection.split');
-  const sel = $('#selection-panel');
-  if (savedSplit) {
-    sel.style.width = savedSplit;
-    sel.style.flex = '0 0 auto';
+  // 恢复记忆的分栏比例（默认 1:2）——记录的是浏览器面板宽度
+  const pane = $('#browser-pane');
+  const savedSplit = parseInt(localStorage.getItem('selection.split'), 10);
+  if (savedSplit >= 320) {
+    pane.style.width = savedSplit + 'px';
+    pane.style.flex = '0 0 auto';
   } else {
-    sel.style.width = '';
-    sel.style.flex = '';
+    pane.style.width = '';
+    pane.style.flex = '';
   }
   // 已有淘宝/天猫标签就直接复用，不再重复开新标签
   const existing = state.tabs.find((t) => isTaobaoUrl(t.url));
@@ -1495,6 +1487,11 @@ function startSelection() {
 function exitSelection() {
   $('#workbench').classList.remove('selecting');
   $('#browser-pane').classList.remove('selecting');
+  // 恢复普通模式的浏览器面板宽度
+  const pane = $('#browser-pane');
+  const savedPane = parseInt(localStorage.getItem('browser.pane'), 10);
+  pane.style.flex = '';
+  pane.style.width = savedPane >= 320 ? savedPane + 'px' : '';
   if (!selectionPriorPane) setPaneOpen(false);
 }
 
